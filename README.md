@@ -169,16 +169,21 @@ node scripts/collect.mjs --scene delivery --address-id <地址ID> --output mcd-d
 
 ```text
 mcd-best-deal/
-├── skill/mcd-best-deal/          # 技能本体（复制到 ~/.workbuddy/skills/ 即安装）
-│   ├── SKILL.md                  # 行为规范（流程/红线/展示/排障）
+├── README.md                     # 项目介绍 / 多平台安装 / 使用示例 / 目标用户
+├── CONTEST_DECLARATION.md        # 参赛声明（官方原文）
+├── MCP_INTEGRATION.md            # MCP 接入说明（Server / Tool / 流程 / 实测记录）
+├── workbuddy.md                  # WorkBuddy 开发对话上下文（专项奖励核验用）
+├── CHANGELOG.md · SECURITY.md · LICENSE
+├── llms.txt                      # 面向 LLM 的项目摘要
+├── test.sh                       # 基础自检（结构 / 语法 / frontmatter）
+├── .claude-plugin/               # Claude Code 插件清单（plugin.json / marketplace.json）
+├── skill/mcd-best-deal/          # 技能本体（安装：install.sh / install.ps1）
+│   ├── SKILL.md                  # 行为规范（触发描述 / 红线 / 主流程 / 展示规范）
+│   ├── install.sh · install.ps1  # 一键安装到各平台（自动检测）
 │   ├── config/rules.json         # 可调规则（模式权重 / 营养目标 / 约束）
-│   └── scripts/
-│       ├── check-connector.mjs   # 连接器体检
-│       ├── setup-connector.mjs   # 一键配置 Token
-│       ├── collect.mjs           # 数据采集
-│       ├── plan.mjs              # 方案引擎
-│       └── lib/mcp-client.mjs    # MCP 直连客户端
-├── dist/mcd-best-deal-skill.zip  # 可直接导入 WorkBuddy 的技能包
+│   ├── references/               # 详细文档（排障手册 / 多平台 / 数据管道）
+│   └── scripts/                  # 采集 / 计算 / 体检 / 配置（零依赖）
+├── dist/mcd-best-deal-skill.zip  # 可直接导入的技能包
 └── docs/phase-0-report.md        # Phase 0 真实验证报告
 ```
 

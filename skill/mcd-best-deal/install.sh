@@ -19,6 +19,8 @@ set -u
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 HOME_DIR="${USERPROFILE:-$HOME}"
+# 统一为正斜杠：Windows 的 USERPROFILE 为反斜杠格式，混合格式会被部分环境的路径校验拒绝
+HOME_DIR="${HOME_DIR//\\//}"
 TARGET="auto"
 DRY_RUN=0
 
