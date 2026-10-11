@@ -1,0 +1,50 @@
+{
+  "version": "0.1.0",
+  "description": "麦麦最优方案 · 可调规则。这是本技能全部『取舍细则』的公开配置——你可以直接编辑本文件，或让 AI 按你的要求修改；每次运行都会读取最新版本。",
+  "modes": {
+    "save": {
+      "name": "省钱模式",
+      "goal": "实付价格最低（含券、含配送费等全部费用）",
+      "weights": { "price": 0.7, "nutrition": 0.1, "convenience": 0.2 }
+    },
+    "healthy": {
+      "name": "健康模式",
+      "goal": "优先满足营养目标（热量/蛋白质等约束），其次价格",
+      "weights": { "price": 0.2, "nutrition": 0.6, "convenience": 0.2 }
+    },
+    "easy": {
+      "name": "省事模式",
+      "goal": "距离最近、步骤最少（拆单会扣分）、时效优先",
+      "weights": { "price": 0.25, "nutrition": 0.15, "convenience": 0.6 }
+    }
+  },
+  "scoring": {
+    "note": "评分 = 三路归一化后按模式权重加权。价格越低越好，营养偏差越小越好，便利性越高越好。",
+    "priceNormalization": "lowest_is_best",
+    "nutritionNormalization": "deviation_from_target",
+    "convenienceParts": {
+      "distanceMeters": "到店场景生效：距离越近越好",
+      "splitOrders": "每多一个待下订单扣 0.2（拆单成本）",
+      "deliveryFeeAware": "外卖场景：配送费已计入实付价，不重复扣分"
+    }
+  },
+  "constraints": {
+    "maxStores": 2,
+    "maxCandidatesPerType": 4,
+    "maxQuoteCalls": 30,
+    "budgetHardFilter": true
+  },
+  "nutritionTargets": {
+    "note": "健康模式的目标区间（可按需修改）。单位为每餐每人。留空或删除某项即不限制该项。",
+    "energyKcalMax": 800,
+    "proteinGMin": 20,
+    "fatGMax": 35,
+    "sodiumMgMax": 1500
+  },
+  "preferences": {
+    "defaultPeople": 1,
+    "avoidItems": [],
+    "preferItems": [],
+    "maxDistanceMeters": 2000
+  }
+}

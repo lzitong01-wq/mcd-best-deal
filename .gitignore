@@ -1,0 +1,10 @@
+# 本地测试数据与临时文件（可能含账号相关数据，勿提交）
+.tmp/
+
+# Node
+node_modules/
+npm-debug.log*
+
+# 系统文件
+.DS_Store
+Thumbs.db
