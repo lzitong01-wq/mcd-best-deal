@@ -28,6 +28,7 @@ import { Writable } from 'node:stream';
 import path from 'node:path';
 import { homedir } from 'node:os';
 import { ENDPOINT, McpClient, REQUIRED_TOOLS, credentialPath } from './lib/mcp-client.mjs';
+import { upsertTomlSection } from './lib/util.mjs';
 
 const SERVER_KEY = 'mcd-mcp';
 // WorkBuddy：小写 streamablehttp（2026-10-11 与实测可用的本机条目对齐）
@@ -176,24 +177,6 @@ async function writeClaude(token, { dryRun }) {
   };
   await writeFile(file, `${JSON.stringify(config, null, 2)}\n`, 'utf8');
   return { status: 'ok', file, backup };
-}
-
-// 在 TOML 文本中插入或替换一个 [section] 段
-function upsertTomlSection(raw, sectionName, bodyLines) {
-  const header = `[${sectionName}]`;
-  const lines = raw.split('\n');
-  const start = lines.findIndex((item) => item.trim() === header);
-  if (start === -1) {
-    const base = raw.trimEnd();
-    const prefix = base === '' ? '' : `${base}\n\n`;
-    return `${prefix}# mcd-best-deal（麦麦最优方案）· 麦当劳官方 MCP\n${header}\n${bodyLines.join('\n')}\n`;
-  }
-  let end = lines.length;
-  for (let index = start + 1; index < lines.length; index += 1) {
-    if (/^\s*\[/.test(lines[index])) { end = index; break; }
-  }
-  const merged = [...lines.slice(0, start), header, ...bodyLines, '', ...lines.slice(end)];
-  return merged.join('\n');
 }
 
 async function writeCodex(token, { dryRun }) {

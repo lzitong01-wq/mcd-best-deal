@@ -48,9 +48,16 @@
 | **Trae** | `~/.trae-cn/skills/`（或项目内 `.trae/skills/`） | 设置 → MCP → 手动添加 |
 | 其他工具 | 任何支持 `.agents/skills/` 约定的环境 | 按各工具文档配置 |
 
-### 第 1 步 · 安装技能（二选一）
+### 第 1 步 · 安装技能（三选一）
 
-**方式 A：一键安装（推荐）** —— 自动检测本机平台并安装：
+**方式 A：生态 CLI（npx skills）** —— 适用于已接入 [skills 生态](https://skills.sh) 的 40+ 平台（Claude Code / Codex / Cursor 等），本仓库已被该 CLI 正确识别（实测）：
+
+```bash
+npx skills add lzitong01-wq/mcd-best-deal           # 交互式：选择技能与目标平台
+npx skills add lzitong01-wq/mcd-best-deal -g -y     # 非交互：全局安装到全部已装平台
+```
+
+**方式 B：一键安装脚本（推荐，离线可用）** —— 自动检测本机平台并安装：
 
 ```bash
 # macOS / Linux / Windows Git Bash
@@ -62,7 +69,7 @@ powershell -ExecutionPolicy Bypass -File skill\mcd-best-deal\install.ps1
 # 指定平台 / 预览：--target claude   --dry-run
 ```
 
-**方式 B：手动安装** —— 把 `skill/mcd-best-deal` 整个文件夹复制到上表对应平台的 Skills 目录（或导入 `dist/mcd-best-deal-skill.zip`）。
+**方式 C：手动安装** —— 把 `skill/mcd-best-deal` 整个文件夹复制到上表对应平台的 Skills 目录（或导入 `dist/mcd-best-deal-skill.zip`）。
 
 ### 第 2 步 · 配置 Token（首次使用，约 1 分钟，所有平台通用）
 
@@ -175,7 +182,8 @@ mcd-best-deal/
 ├── workbuddy.md                  # WorkBuddy 开发对话上下文（专项奖励核验用）
 ├── CHANGELOG.md · SECURITY.md · LICENSE
 ├── llms.txt                      # 面向 LLM 的项目摘要
-├── test.sh                       # 基础自检（结构 / 语法 / frontmatter）
+├── test.sh                       # 基础自检（结构 / 语法 / frontmatter / 单元测试）
+├── tests/                        # 单元测试（node:test，零依赖）
 ├── .claude-plugin/               # Claude Code 插件清单（plugin.json / marketplace.json）
 ├── skill/mcd-best-deal/          # 技能本体（安装：install.sh / install.ps1）
 │   ├── SKILL.md                  # 行为规范（触发描述 / 红线 / 主流程 / 展示规范）

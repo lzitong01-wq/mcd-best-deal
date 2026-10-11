@@ -10,6 +10,7 @@
 
 import { writeFile } from 'node:fs/promises';
 import { McpClient, resolveToken } from './lib/mcp-client.mjs';
+import { parseCompactTable } from './lib/util.mjs';
 
 const SCHEMA = 'mcd-best-deal/collect@0.1.0';
 
@@ -57,29 +58,6 @@ function pickArray(value, keys = []) {
     if (Array.isArray(value?.[key])) return value[key];
   }
   return [];
-}
-
-// MCP 部分工具以「紧凑表格」字符串返回数据，格式：
-//   [行数]{列1,列2,...}:
-//     值1,值2,...
-//     ...
-// 例：list-nutrition-foods 的 data 字段（160 行营养数据）。解析失败返回 null。
-function parseCompactTable(text) {
-  const match = String(text).match(/^\[(\d+)\]\{([^}]+)\}:\s*\n([\s\S]+)$/);
-  if (!match) return null;
-  const columns = match[2].split(',').map((column) => column.trim());
-  return match[3].split('\n')
-    .map((row) => row.trim())
-    .filter(Boolean)
-    .map((row) => {
-      const values = row.split(',');
-      const item = {};
-      columns.forEach((column, index) => {
-        const value = values[index];
-        item[column] = value === undefined || value === 'null' ? null : value;
-      });
-      return item;
-    });
 }
 
 // 当前北京时间（HH:mm），用于营业状态判断

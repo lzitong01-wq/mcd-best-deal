@@ -23,6 +23,7 @@ check_file "$SCRIPT_DIR/llms.txt" "llms.txt"
 check_file "$SKILL_DIR/SKILL.md" "skill/SKILL.md"
 check_file "$SKILL_DIR/config/rules.json" "config/rules.json"
 check_file "$SKILL_DIR/install.sh" "install.sh"
+check_file "$SCRIPT_DIR/tests/util.test.mjs" "tests/util.test.mjs"
 
 echo "== 2. 脚本语法 =="
 NODE_BIN="$(command -v node || true)"
@@ -52,6 +53,17 @@ if [ -n "$NODE_BIN" ]; then
   else
     bad "rules.json 非法"
   fi
+fi
+
+echo "== 5. 单元测试（node --test）=="
+if [ -n "$NODE_BIN" ]; then
+  if (cd "$SCRIPT_DIR" && "$NODE_BIN" --test >/dev/null 2>&1); then
+    ok "单元测试全部通过"
+  else
+    bad "单元测试失败（运行 node --test tests/ 查看详情）"
+  fi
+else
+  echo "  [SKIP] 未找到 node"
 fi
 
 echo

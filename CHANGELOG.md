@@ -4,6 +4,14 @@
 
 ## [Unreleased]
 
+### Added
+- `tests/util.test.mjs`：单元测试（node:test，零依赖、无需网络；11 例覆盖解析/匹配/TOML 处理）
+- `scripts/lib/util.mjs`：纯工具函数独立成模块（紧凑表格解析 / 营养匹配 / TOML 段写入），供测试与脚本共用
+- README 新增 `npx skills add lzitong01-wq/mcd-best-deal` 生态安装方式（已实测可被 skills CLI 正确发现）
+
+### Fixed
+- `test.sh` 的 `node --test` 调用方式（目录参数在 Windows 下无法解析，改为自动发现模式）
+
 ## [0.3.0] - 2026-10-11
 
 ### Added

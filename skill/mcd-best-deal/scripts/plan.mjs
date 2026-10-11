@@ -12,6 +12,7 @@ import { readFile, writeFile } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
 import { McpClient, resolveToken } from './lib/mcp-client.mjs';
+import { findNutrition } from './lib/util.mjs';
 
 const SCHEMA = 'mcd-best-deal/plan@0.1.0';
 const COMBO_PATTERN = /套餐|三件套|四件套|随心选|双人餐|双人|单人餐|拼盘|随心拼|分享餐/;
@@ -46,22 +47,6 @@ function parseArgs(argv) {
 }
 
 // ---- 营养匹配与计算 ----
-
-// 返回 { row, quality }。quality: exact=名称完全一致；fuzzy=需推断（会低估营养，不展示具体数值、不计分）；none=未匹配
-function findNutrition(table, productName) {
-  if (!productName || !table?.length) return { row: null, quality: 'none' };
-  const clean = (text) => String(text).replace(/\s|™/g, '');
-  const target = clean(productName);
-  let hit = table.find((row) => clean(row.productName) === target);
-  if (hit) return { row: hit, quality: 'exact' };
-  const stripped = target.replace(/三件套|四件套|套餐|随心选|双人餐|单人餐|单点|（.*?）|\(.*?\)/g, '');
-  if (stripped && stripped !== target) {
-    hit = table.find((row) => clean(row.productName) === stripped);
-    if (hit) return { row: hit, quality: 'fuzzy' };
-  }
-  hit = table.find((row) => target.includes(clean(row.productName)) || clean(row.productName).includes(target));
-  return hit ? { row: hit, quality: 'fuzzy' } : { row: null, quality: 'none' };
-}
 
 function num(value) {
   const parsed = Number(value);

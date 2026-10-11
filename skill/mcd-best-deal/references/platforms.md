@@ -13,7 +13,18 @@
 | Trae | `~/.trae-cn/skills/`（或项目 `.trae/skills/`） | 设置 → MCP（界面添加） | 添加后重启 |
 | 其他 | 支持 `.agents/skills/` 约定的环境 | 按各工具文档 | — |
 
-## 一键安装（推荐）
+## 生态 CLI（npx skills，跨 40+ 平台）
+
+本仓库已兼容通用 skills CLI（[skills.sh](https://skills.sh) 生态，支持 Claude Code / Codex / Cursor 等 40+ 平台），无需手动克隆：
+
+```bash
+npx skills add lzitong01-wq/mcd-best-deal           # 交互式：选择技能与目标平台
+npx skills add lzitong01-wq/mcd-best-deal -g -y     # 非交互：全局安装
+```
+
+安装后同样运行 `setup-connector.mjs` 配置 Token 即可（见下）。
+
+## 一键安装（推荐，离线可用）
 
 ```bash
 bash install.sh                       # 自动检测本机平台并安装
