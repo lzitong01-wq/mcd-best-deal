@@ -27,6 +27,7 @@ async function main() {
 
   if (!token) {
     const hints = {
+      'missing-credential-file': '未找到通用凭证文件（~/.mcd-best-deal/token）——请运行 setup-connector.mjs 写入 Token。',
       'missing-config': '本机还没有 mcd-mcp 配置。请先运行 setup-connector.mjs 写入 Token。',
       'invalid-config': `${file ?? '配置文件'} 不是合法 JSON，请检查后重试。`,
       'unreadable-config': `无法读取 ${file ?? '配置文件'}：请检查文件权限。`,
@@ -35,7 +36,8 @@ async function main() {
     report.error = hints[source] ?? '未找到 Token。';
     if (json) { line(JSON.stringify(report, null, 2)); process.exitCode = 1; return; }
     line(`[不可用] ${report.error}`);
-    line('         Token 来源优先级：环境变量 MCD_MCP_TOKEN > ~/.workbuddy/mcp.json');
+    line('         Token 来源优先级：环境变量 MCD_MCP_TOKEN > 通用凭证 ~/.mcd-best-deal/token > ~/.workbuddy/mcp.json');
+    line('         提示：运行 setup-connector.mjs 可一次性完成所有来源的配置。');
     process.exitCode = 1;
     return;
   }
@@ -71,7 +73,10 @@ async function main() {
 
   line('麦麦最优方案 · 连接器体检');
   line();
-  line(`Token 来源：${source === 'env' ? '环境变量 MCD_MCP_TOKEN' : `配置文件（${file}）`}`);
+  const sourceLabel = source === 'env' ? '环境变量 MCD_MCP_TOKEN'
+    : source === 'credential-file' ? '通用凭证文件（~/.mcd-best-deal/token）'
+      : `配置文件（${file}）`;
+  line(`Token 来源：${sourceLabel}`);
   line(`服务：${report.online.server}，协议 ${report.online.protocol ?? '未知'}，共 ${report.online.toolCount} 个工具`);
   line();
   line(`[${report.requiredTools.missing.length ? '缺少' : '齐全'}] 核心工具 ${report.requiredTools.ok.length}/${REQUIRED_TOOLS.length}`);

@@ -143,11 +143,34 @@ export class McpClient {
   }
 }
 
-// ---- Token 解析：环境变量优先，其次读 WorkBuddy 私有配置 ----
+// ---- Token 解析（跨平台）----
+// 优先级：环境变量 > 通用凭证文件 > WorkBuddy 配置（兼容）
+// 通用凭证文件 ~/.mcd-best-deal/token 由 setup-connector.mjs 写入，
+// 让本技能在 WorkBuddy / Claude Code / Codex / Trae 等任意平台下都能找到 Token。
 
 export function configPath() {
   const home = process.env.USERPROFILE || process.env.HOME || homedir();
   return path.join(home, '.workbuddy', 'mcp.json');
+}
+
+export function credentialPath() {
+  const home = process.env.USERPROFILE || process.env.HOME || homedir();
+  return path.join(home, '.mcd-best-deal', 'token');
+}
+
+export async function readTokenFromCredentialFile() {
+  const file = credentialPath();
+  let raw;
+  try {
+    raw = await readFile(file, 'utf8');
+  } catch (error) {
+    if (error.code === 'ENOENT') return { token: null, source: 'missing-credential-file', file };
+    return { token: null, source: 'unreadable-credential-file', file, reason: error.message };
+  }
+  const token = raw.split('\n')
+    .map((lineText) => lineText.trim())
+    .find((lineText) => lineText && !lineText.startsWith('#'));
+  return { token: token ?? null, source: token ? 'credential-file' : 'empty-credential-file', file };
 }
 
 export async function readTokenFromConfig() {
@@ -170,5 +193,7 @@ export async function readTokenFromConfig() {
 export async function resolveToken() {
   const envToken = process.env.MCD_MCP_TOKEN?.trim();
   if (envToken) return { token: envToken, source: 'env' };
+  const credential = await readTokenFromCredentialFile();
+  if (credential.token) return credential;
   return readTokenFromConfig();
 }

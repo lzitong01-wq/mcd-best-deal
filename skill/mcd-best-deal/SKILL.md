@@ -7,6 +7,8 @@ description: 麦麦最优方案——想吃麦当劳时，结合口味、人数�
 
 回答「今天怎么吃麦当劳最合适」：想吃什么 + 几个人 + 预算 + 位置 → 输出一份**可验证**的方案排行。
 
+> 本技能遵循 Agent Skills 开放标准，支持 WorkBuddy / Claude Code / Codex / Trae 等平台（各平台安装方式见仓库 README）。技能自带零依赖直连客户端，**不依赖特定平台的 MCP 加载**——只需 Token 可用即可工作。
+
 **核心原则**：候选方案由脚本枚举，价格一律由官方算价器 `calculate-price` 实时试算，模型只负责理解需求、组织展示与守卫确认门控。
 
 ## 红线（必须遵守）
@@ -37,10 +39,11 @@ PowerShell：`$env:MCD_MCP_TOKEN='<Token>'; node "<skill目录>/scripts/setup-co
 
 把脚本输出的验证结果（服务名、工具数、核心工具是否齐全）转述给用户。
 
-**第 3 步 · 激活（约 30 秒，无法跳过）**：
-① 连接器管理页 → 自定义连接器 → 对 `mcd-mcp` 点「Trust」；
-② 聊天窗口左下角「+」菜单启用 `mcd-mcp`；
-③ 重开一轮会话，再说「帮我算今天怎么吃麦当劳」。
+**第 3 步 · 激活（按所在平台完成）**：
+- WorkBuddy：连接器管理页 → 自定义连接器 → 对 `mcd-mcp` 点「Trust」→ 聊天窗口左下角「+」启用 → 重开一轮会话；
+- Claude Code：重启会话（`/mcp` 可确认 `mcd-mcp` 已加载）；
+- Codex：重启后运行 `codex mcp list` 确认；
+- Trae：按 setup 脚本输出的指引在「设置 → MCP」中添加后重启。
 
 ## 第 0 步 · 连接器自检（每次计算前）
 
@@ -129,7 +132,7 @@ node "<skill目录>/scripts/plan.mjs" --input <工作目录>/mcd-data.json --mod
 
 | 现象 | 先查什么 |
 | --- | --- |
-| 脚本报「未找到 Token」 | 跑 setup-connector.mjs；或检查 `~/.workbuddy/mcp.json` 的 mcd-mcp 条目 |
+| 脚本报「未找到 Token」 | 跑 setup-connector.mjs（写入通用凭证 `~/.mcd-best-deal/token`）；或设置 `MCD_MCP_TOKEN` 环境变量 |
 | 脚本报 HTTP 401/403 | Token 失效：回平台重新申请，setup 覆盖 |
 | 脚本报 HTTP 429 | 触发限流（600 次/分钟）：稍等重跑 |
 | 试算报「门店暂停营业」 | 打烊：换营业中门店；或改预约单（reservationDate）；或换时段再算 |

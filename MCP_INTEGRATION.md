@@ -19,7 +19,21 @@
 1. **WorkBuddy 对话内的 `mcd-mcp` 连接器**：Agent 直接调用工具完成交互式查询；
 2. **项目自带零依赖 Node.js 直连客户端**（`skill/mcd-best-deal/scripts/lib/mcp-client.mjs`，Streamable HTTP + SSE 解析），用于「采集 → 试算 → 排序」的确定性计算链路，保证连接器尚未加载时也能完整工作。
 
-**凭证安全**：Token 只写入用户本机（`~/.workbuddy/mcp.json`，写入前自动备份）或从环境变量 `MCD_MCP_TOKEN` 读取；不进入仓库文件、不写入日志、不在对话中回显。本仓库不含任何真实凭证。
+**凭证安全**：Token 只写入用户本机（通用凭证文件 `~/.mcd-best-deal/token`、各平台配置或环境变量 `MCD_MCP_TOKEN`）；不进入仓库文件、不写入日志、不在对话中回显。本仓库不含任何真实凭证。
+
+### 多平台接入
+
+本技能遵循 Agent Skills 开放标准，并可通过标准 MCP（Streamable HTTP）接入多个 AI 工具。一条配置命令即可完成（`scripts/setup-connector.mjs` 会写入通用凭证文件，并自动写入检测到的平台配置）：
+
+| 平台 | Skills 目录 | MCP 配置 | 配置方式 |
+| --- | --- | --- | --- |
+| WorkBuddy | `~/.workbuddy/skills/` | `~/.workbuddy/mcp.json` | 脚本自动写入；连接器页 Trust + 启用 |
+| Claude Code | `~/.claude/skills/` | `~/.claude.json` | 脚本自动合并；或 `claude mcp add --transport http mcd-mcp https://mcp.mcd.cn --header "Authorization: Bearer <Token>"` |
+| Codex | `~/.agents/skills/` | `~/.codex/config.toml` | 脚本自动写入 `[mcp_servers.mcd-mcp]` 段（url + http_headers） |
+| Trae | `~/.trae-cn/skills/` | 设置 → MCP | 按脚本输出的 JSON 指引手动添加 |
+| 其他工具 | 支持 `.agents/skills/` 约定的环境 | 按各工具文档 | 复制技能文件夹 + 配置 MCP 或设置 `MCD_MCP_TOKEN` |
+
+**关键设计**：本技能自带零依赖 Node.js 直连客户端（`scripts/lib/mcp-client.mjs`），只需 Token（通用凭证文件或环境变量）即可完成「采集 → 官方算价 → 排序」全链路，**不依赖任何平台的 MCP 加载状态**——平台连接器是体验增强（Agent 可直接调用官方工具），而非运行前提。
 
 ## 二、使用的 Tool 及角色
 

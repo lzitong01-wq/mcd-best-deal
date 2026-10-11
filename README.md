@@ -38,29 +38,79 @@
 
 ## 安装
 
-### 方式一：对话安装（推荐）
+本技能遵循 **Agent Skills 开放标准**（一个文件夹 + `SKILL.md`），可安装到任何支持该标准的 AI 工具。已适配：
 
-对 WorkBuddy 说：
+| 平台 | Skills 目录 | MCP 配置位置（可选增强） |
+| --- | --- | --- |
+| **WorkBuddy** | `~/.workbuddy/skills/` | `~/.workbuddy/mcp.json` |
+| **Claude Code** | `~/.claude/skills/` | `~/.claude.json`（或 `claude mcp add`） |
+| **Codex** | `~/.agents/skills/`（旧版：`~/.codex/skills/`） | `~/.codex/config.toml` |
+| **Trae** | `~/.trae-cn/skills/`（或项目内 `.trae/skills/`） | 设置 → MCP → 手动添加 |
+| 其他工具 | 任何支持 `.agents/skills/` 约定的环境 | 按各工具文档配置 |
 
-```text
-帮我安装这个技能：<仓库地址或本地路径>
-把 skill/mcd-best-deal 文件夹复制到用户级技能目录（~/.workbuddy/skills/），
-确认 SKILL.md 存在，装完提醒我重开一轮会话
+### 第 1 步 · 安装技能（二选一）
+
+**方式 A：一键安装（推荐）** —— 自动检测本机平台并安装：
+
+```bash
+# macOS / Linux / Windows Git Bash
+bash skill/mcd-best-deal/install.sh
+
+# Windows PowerShell
+powershell -ExecutionPolicy Bypass -File skill\mcd-best-deal\install.ps1
+
+# 指定平台 / 预览：--target claude   --dry-run
 ```
 
-### 方式二：zip 导入
+**方式 B：手动安装** —— 把 `skill/mcd-best-deal` 整个文件夹复制到上表对应平台的 Skills 目录（或导入 `dist/mcd-best-deal-skill.zip`）。
 
-下载 `dist/mcd-best-deal-skill.zip`，在 WorkBuddy「技能 → 添加技能 → 上传技能」里导入。
-
-### 配置 Token（首次使用，约 1 分钟）
-
-安装后对 WorkBuddy 说「帮我算今天怎么吃麦当劳」，它会引导你：
+### 第 2 步 · 配置 Token（首次使用，约 1 分钟，所有平台通用）
 
 1. 到 [open.mcd.cn/mcp/doc](https://open.mcd.cn/mcp/doc) 登录 → 控制台 → 激活 → 一键复制 Token；
-2. 把 Token 粘贴到对话里，脚本自动写入本机 `~/.workbuddy/mcp.json`（写前备份、在线验证、不回显）；
-3. 连接器管理页点「Trust」→ 左下角「+」启用 → 重开一轮会话。
+2. 运行一次配置脚本（Token 粘贴到提示符，输入不回显）：
 
-> ⚠️ Token 等同账号凭证，只在自己对话里粘贴，不要发到群聊或公开场合。
+```bash
+node "<技能目录>/scripts/setup-connector.mjs"
+```
+
+脚本会一口气完成：写入**通用凭证文件**（所有平台通用）→ 自动写入检测到的平台 MCP 配置（WorkBuddy / Claude Code / Codex，写前备份）→ 在线验证 → 为 Trae 输出添加指引。全程不打印 Token。
+
+3. 按所在平台完成启用：
+
+| 平台 | 启用方式 |
+| --- | --- |
+| WorkBuddy | 连接器管理页对 `mcd-mcp` 点「Trust」→ 左下角「+」启用 → 重开会话 |
+| Claude Code | 重启会话，`/mcp` 可看到 `mcd-mcp` |
+| Codex | 重启后 `codex mcp list` 确认加载 |
+| Trae | 按脚本输出的指引在「设置 → MCP」添加后重启 |
+
+> ⚠️ Token 等同账号凭证，只在自己的对话里粘贴，不要发到群聊或公开场合。
+
+### 附：手动配置 MCP 片段（偏好手动/未用脚本时）
+
+<details>
+<summary>各平台配置参考（点击展开）</summary>
+
+**Claude Code**（终端命令）：
+```bash
+claude mcp add --transport http mcd-mcp https://mcp.mcd.cn --header "Authorization: Bearer <Token>"
+```
+
+**Codex**（`~/.codex/config.toml`）：
+```toml
+[mcp_servers.mcd-mcp]
+url = "https://mcp.mcd.cn"
+http_headers = { Authorization = "Bearer <Token>" }
+```
+
+**Trae**（设置 → MCP → 手动添加，粘贴 JSON）：
+```json
+{ "mcpServers": { "mcd-mcp": { "url": "https://mcp.mcd.cn", "headers": { "Authorization": "Bearer <Token>" } } } }
+```
+
+**通用（环境变量方式）**：任何环境下设置 `MCD_MCP_TOKEN=<Token>`，本技能脚本即可直连官方 MCP，**无需平台 MCP 配置**。
+
+</details>
 
 ## 使用
 
