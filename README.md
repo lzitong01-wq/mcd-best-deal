@@ -201,7 +201,7 @@ node scripts/preferences.mjs set --avoid 香菜,洋葱 --prefer 麦辣 --mode sa
   <img src="images/save-proof.png" alt="实测效果：巨无霸套餐比单点省 ¥12；有券不一定最省" width="100%">
 </p>
 
-> 本项目经过两轮外部测试（50 题系统性测试 + 7 项任务实测，发现的缺陷已全部修复并回归）——完整记录见 [TESTING.md](TESTING.md)。
+> **测试驱动的改进**：两轮外部实测（50 题系统性测试 + 7 项真实任务）发现的缺陷已全部修复并回归——「菜单价≠成交价」「查询失败≠不存在」等关键原则都来自这些真实测试。完整记录见 [TESTING.md](TESTING.md)。
 
 ## 已知边界（实测结论）
 
