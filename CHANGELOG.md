@@ -4,9 +4,13 @@
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-10-12
+
 ### Added
-- `tests/util.test.mjs`：单元测试（node:test，零依赖、无需网络；11 例覆盖解析/匹配/TOML 处理）
-- `scripts/lib/util.mjs`：纯工具函数独立成模块（紧凑表格解析 / 营养匹配 / TOML 段写入），供测试与脚本共用
+- `tests/util.test.mjs`：单元测试（node:test，零依赖、无需网络；覆盖解析 / 匹配 / TOML / 偏好读取 / 搜索词扩展与分类匹配）
+- `scripts/lib/util.mjs`：纯工具函数独立成模块（紧凑表格解析 / 营养匹配 / TOML 段写入 / 搜索词匹配），供测试与脚本共用
+- 用户偏好体系：`~/.mcd-best-deal/preferences.json` + `preferences.mjs`（忌口/口味/默认模式/常用位置）
+- `matchedCatalog` 输出：`--want` 时的完整匹配清单（候选受名额限制，完整匹配如实告知）
 - README 新增 `npx skills add lzitong01-wq/mcd-best-deal` 生态安装方式（已实测可被 skills CLI 正确发现）
 
 ### Changed
