@@ -1,5 +1,5 @@
 // mcd-best-deal · 纯工具函数（解析 / 匹配 / 文本处理 / 用户偏好读取）
-// 除 loadPreferences 读取本地偏好文件外，其余函数无副作用、无网络依赖，便于单元测试（tests/util.test.mjs）。
+// 除 loadPreferences 读取本地偏好文件外，其余函数无副作用、无网络依赖，便于单元测试。
 
 import { readFile } from 'node:fs/promises';
 import path from 'node:path';

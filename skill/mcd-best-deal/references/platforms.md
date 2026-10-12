@@ -39,7 +39,7 @@ Windows PowerShell 对应：`powershell -ExecutionPolicy Bypass -File install.ps
 
 ## 手动安装
 
-把 `skill/mcd-best-deal` 整个文件夹复制到上表对应平台的 Skills 目录，或导入 `dist/mcd-best-deal-skill.zip`。
+把 `skill/mcd-best-deal` 整个文件夹复制到上表对应平台的 Skills 目录。
 
 ## Token 配置（所有平台通用，只需一次）
 

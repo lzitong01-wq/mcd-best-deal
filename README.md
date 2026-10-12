@@ -84,7 +84,7 @@ powershell -ExecutionPolicy Bypass -File skill\mcd-best-deal\install.ps1
 # 指定平台 / 预览：--target claude   --dry-run
 ```
 
-**方式 C：手动安装** —— 把 `skill/mcd-best-deal` 整个文件夹复制到上表对应平台的 Skills 目录（或导入 `dist/mcd-best-deal-skill.zip`）。
+**方式 C：手动安装** —— 把 `skill/mcd-best-deal` 整个文件夹复制到上表对应平台的 Skills 目录。
 
 ### 第 2 步 · 配置 Token（首次使用，约 1 分钟，所有平台通用）
 
@@ -202,21 +202,14 @@ node scripts/preferences.mjs set --avoid 香菜,洋葱 --prefer 麦辣 --mode sa
 mcd-best-deal/
 ├── README.md                     # 项目介绍 / 多平台安装 / 使用示例 / 目标用户
 ├── CONTEST_DECLARATION.md        # 参赛声明（官方原文）
-├── MCP_INTEGRATION.md            # MCP 接入说明（Server / Tool / 流程 / 实测记录）
+├── MCP_INTEGRATION.md            # MCP 接入说明（Server / Tool / 流程 / 业务价值）
 ├── workbuddy.md                  # WorkBuddy 开发对话上下文（专项奖励核验用）
-├── CHANGELOG.md · SECURITY.md · LICENSE
-├── llms.txt                      # 面向 LLM 的项目摘要
-├── test.sh                       # 基础自检（结构 / 语法 / frontmatter / 单元测试）
-├── tests/                        # 单元测试（node:test，零依赖）
-├── .claude-plugin/               # Claude Code 插件清单（plugin.json / marketplace.json）
-├── skill/mcd-best-deal/          # 技能本体（安装：install.sh / install.ps1）
-│   ├── SKILL.md                  # 行为规范（触发描述 / 红线 / 主流程 / 展示规范）
-│   ├── install.sh · install.ps1  # 一键安装到各平台（自动检测）
-│   ├── config/rules.json         # 可调规则（模式权重 / 营养目标 / 约束）
-│   ├── references/               # 详细文档（排障手册 / 多平台 / 数据管道）
-│   └── scripts/                  # 采集 / 计算 / 偏好 / 体检 / 配置（零依赖）
-├── dist/mcd-best-deal-skill.zip  # 可直接导入的技能包
-└── docs/phase-0-report.md        # Phase 0 真实验证报告
+└── skill/mcd-best-deal/          # 技能本体（源代码，复制即安装）
+    ├── SKILL.md                  # 行为规范（触发描述 / 红线 / 主流程 / 展示规范）
+    ├── install.sh · install.ps1  # 一键安装脚本
+    ├── config/rules.json         # 可调规则（模式权重 / 营养目标 / 约束）
+    ├── references/               # 详细文档（排障手册 / 多平台 / 数据管道）
+    └── scripts/                  # 全部运行代码（零依赖）
 ```
 
 ## 免责声明
