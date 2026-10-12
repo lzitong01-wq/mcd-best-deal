@@ -32,7 +32,7 @@
     "maxStores": 2,
     "maxCandidatesPerType": 4,
     "maxQuoteCalls": 40,
-    "maxCouponVariants": 12,
+    "maxCouponVariants": 15,
     "couponEvalTopK": 5,
     "maxCouponsPerStore": 4,
     "budgetHardFilter": true

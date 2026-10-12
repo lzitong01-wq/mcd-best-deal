@@ -216,13 +216,19 @@ function buildCandidates(data, rules, options) {
     const combos = styleAllowsCombo
       ? wanted.filter((meal) => meal.isCombo).slice(0, maxPerType)
       : [];
-    // 单品选取：人气/偏好靠前 2 款 + 全池最便宜 1 款（去重）——避免便宜款因「没人气」被完全裁掉
+    // 单品选取：人气/偏好靠前 2 款 + 全池最便宜 1 款 + （点名时）最直接命中的 1 款（去重）
+    // ——「最直接命中」= 名称级匹配中名称最短的那个（点「麦香鱼」时保证「麦香鱼」本身进候选）
     const singlePool = wanted.filter((meal) => !meal.isCombo);
     const cheapest = [...singlePool].sort((a, b) => a.price - b.price)[0];
+    const directHit = want
+      ? [...singlePool]
+        .filter((meal) => matchLevel(meal.name, meal.tags, meal.category, wantTerms) === 2)
+        .sort((a, b) => a.name.length - b.name.length)[0]
+      : null;
     const singles = styleAllowsSingle
-      ? [...singlePool.slice(0, 2), ...(cheapest ? [cheapest] : [])]
+      ? [...singlePool.slice(0, 2), ...(cheapest ? [cheapest] : []), ...(directHit ? [directHit] : [])]
         .filter((meal, index, array) => array.findIndex((item) => item.code === meal.code) === index)
-        .slice(0, 3)
+        .slice(0, 4)
       : [];
 
     // 类型 1：官方套餐
@@ -238,7 +244,7 @@ function buildCandidates(data, rules, options) {
     }
 
     // 类型 2：单品裸买
-    for (const single of singles.slice(0, 3)) {
+    for (const single of singles.slice(0, 4)) {
       candidates.push({
         kind: 'single', storeCode: pool.storeCode, group: single.name,
         title: `${single.name} ×${people}`,
@@ -467,15 +473,29 @@ async function main() {
 
   // 2.5 券综合评估：对基础候选（按价格从低到高取前 K 个）逐一叠加「每张可用券」试算，
   //     综合比较所有商品可用券的实际效果（官方限制一单一券，每次仅叠加一张）
-  const maxVariants = rules.constraints?.maxCouponVariants ?? 12;
+  const maxVariants = rules.constraints?.maxCouponVariants ?? 15;
   const couponEvalTopK = rules.constraints?.couponEvalTopK ?? 5;
   const maxCouponsPerStore = rules.constraints?.maxCouponsPerStore ?? 4;
-  const baseRanked = [...quoted].sort((a, b) => a.pricing.price - b.pricing.price).slice(0, couponEvalTopK);
+  // 券评估对象 =「价格最低的前 K 个基础候选」+「至少 1 个套餐」+「至少 1 个单点组合」。
+  // 注意：务必先排除券/拆单候选再按价格取前 K——券候选价格天然最低，此前会把名单占满，
+  // 导致「套餐/组合 + 券」变体从不生成（外部实测：多个候选里组合+券数量为 0）。
+  const evalPool = quoted.filter((candidate) => candidate.kind !== 'coupon' && candidate.kind !== 'split');
+  const byPrice = [...evalPool].sort((a, b) => a.pricing.price - b.pricing.price);
+  const baseRanked = [];
+  const seenBase = new Set();
+  const addBase = (candidate) => {
+    if (candidate && !seenBase.has(candidate)) {
+      seenBase.add(candidate);
+      baseRanked.push(candidate);
+    }
+  };
+  byPrice.slice(0, couponEvalTopK).forEach(addBase);
+  addBase(byPrice.find((candidate) => candidate.kind === 'combo'));
+  addBase(byPrice.find((candidate) => candidate.kind === 'combo-parts'));
   const variants = [];
   const variantSignatures = new Set();
   for (const base of baseRanked) {
     if (variants.length >= maxVariants) break;
-    if (base.kind === 'coupon' || base.kind === 'split') continue; // 已是券方案，不再叠加
     const storeCoupons = data.storeCoupons?.[base.storeCode] ?? [];
     for (const coupon of storeCoupons.slice(0, maxCouponsPerStore)) {
       if (variants.length >= maxVariants) break;
@@ -562,6 +582,19 @@ async function main() {
       total: round3(total),
     };
     candidate.nutrition = nutrition;
+  }
+
+  // 3.5 菜单价与实算价差异过大时如实标注（以算价器为准；同名只记一次）
+  const priceDriftNoted = new Set();
+  for (const candidate of quoted) {
+    const estimate = candidate.estimateFen;
+    if (!estimate || !candidate.pricing) continue;
+    if (Math.abs(candidate.pricing.price - estimate) / estimate > 0.3) {
+      const key = candidate.items?.[0]?.productName ?? candidate.title;
+      if (priceDriftNoted.has(key)) continue;
+      priceDriftNoted.add(key);
+      notes.push(`价格差异提示：「${key}」菜单价约 ¥${(estimate / 100).toFixed(2)}，实算 ¥${(candidate.pricing.price / 100).toFixed(2)}——以实算价为准（菜单价可能是展示价 / 选规格起价 / 过期活动价）。`);
+    }
   }
 
   // 4. 排序与组装输出
