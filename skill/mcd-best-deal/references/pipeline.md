@@ -13,10 +13,12 @@
   ├─ plan.mjs ── 枚举与试算
   │    候选构造：官方套餐 / 单品裸买 / 单点组合 / 券商品方案 / 拆单方案（多券分单）
   │    → 每个候选调用官方 calculate-price 试算实付价（分单位）
+  │    → 券综合评估：代表性候选 × 每张门店券（套餐/组合保底；每个变体仅挂一张券）
   │    → 三路评分（价格 / 营养偏差 / 便利）× 模式权重 → 排序
   │
   └─ 展示（对话 + plan.json）
-       Top 方案 / 套餐对比（comparisons）/ 按购买方式分组（byStyle）/ 券提示（couponHints）
+       Top 方案（同款去重）/ 套餐对比（comparisons）/ 按购买方式分组（byStyle）
+       / 券提示（couponHints）/ 完整匹配清单（matchedCatalog）
        │
        └─ 用户确认后（可选）── auto-bind-coupons → create-order → 用户自行支付
 ```
@@ -38,11 +40,12 @@ node scripts/collect.mjs --scene delivery --address-id <ID> --output mcd-data.js
 
 ```bash
 node scripts/plan.mjs --input mcd-data.json --mode save|healthy|easy --people 1 \
-  [--want 关键词] [--style any|combo|single] [--budget 50] [--top 3] --output mcd-plan.json
+  [--want 关键词（多词用 和/、/，）] [--style any|combo|single] [--budget 50] [--top 3] \
+  [--protein-min 30 --kcal-max 600 --fat-max 30 --sodium-max 800] --output mcd-plan.json
 ```
 
 - 输出 schema：`mcd-best-deal/plan@0.1.0`
-- 单次运行会调用官方算价器约 10–30 次（受 `rules.json` 的 `maxQuoteCalls` 约束）
+- 单次运行会调用官方算价器约 20–40 次（基础候选 + 券评估变体；受 `rules.json` 的 `maxQuoteCalls` 约束）
 
 ### check-connector.mjs / setup-connector.mjs
 见 `references/troubleshooting.md` 与 `references/platforms.md`。
@@ -71,6 +74,8 @@ node scripts/plan.mjs --input mcd-data.json --mode save|healthy|easy --people 1 
 | `comparisons[]` | 套餐 vs 单点组合结论（`conclusion` 如「套餐更便宜，省 ¥12」） |
 | `couponHints[]` | 与需求不相关但可用的券（顺便提示） |
 | `failed[]` | 试算失败的候选及原因（通常因门店打烊/券不可用） |
+| `matchedCatalog[]` | `--want` 时的完整匹配清单（候选受名额限制，完整匹配如实给出） |
+| `popular` | 人气款标记（仅作「没主意时」的参考提示） |
 | `pricing.price` | 实付价（**分**，展示时除以 100） |
 | `scores` | 三路得分与总分（`price/nutrition/convenience/total`） |
 | `nutrition.details` | 每个商品的营养匹配质量（`exact` / `fuzzy` / `none`） |
@@ -78,7 +83,9 @@ node scripts/plan.mjs --input mcd-data.json --mode save|healthy|easy --people 1 
 
 ## 引擎内置的诚实约束
 
-- 价格只来自官方试算结果，不估算、不复用旧价（**菜单标价仅用于候选预筛，且实测存在菜单价与算价器不一致的案例——菜单价绝不作为成交价**）；
-- 营养仅精确匹配才计入评分，否则标注「不完整（不计分）」；
-- 券的可用性逐店、逐时段实时查询，不缓存；
+- 价格只来自官方试算结果，不估算、不复用旧价（**菜单标价仅用于候选预筛，且实测存在菜单价与算价器不一致的案例——菜单价绝不作为成交价**；差异 >30% 时自动写入 `notes` 价格差异提示）；
+- 营养仅精确匹配才计入评分，否则标注「不完整（不计分）」；健康模式下不完整数据降权；
+- 券的可用性逐店、逐时段实时查询，不缓存；券评估变体每次只挂一张券；
+- 点名款保底进候选（名称级精确匹配优先——点名的菜不会被同类目更便宜的商品挤掉）；
+- 预算内无符合项时输出「最接近的是……超 ¥Y」，不静默替换；
 - 拆单方案显式标注「需分 N 次下单」。
