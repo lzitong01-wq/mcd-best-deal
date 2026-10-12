@@ -1,5 +1,18 @@
 # 麦麦最优方案 · mcd-best-deal
 
+<p align="center">
+  <img src="images/banner.png" alt="麦麦最优方案 —— 用官方算价器，算出「怎么吃麦当劳最划算」" width="100%">
+</p>
+
+<p align="center">
+  <a href="#目标用户"><img src="https://img.shields.io/badge/🎯-目标用户-DA291C?style=for-the-badge" alt="目标用户"></a>
+  <a href="#实测效果真实数据"><img src="https://img.shields.io/badge/📊-实测效果-DA291C?style=for-the-badge" alt="实测效果"></a>
+  <a href="#使用"><img src="https://img.shields.io/badge/💬-使用示例-DA291C?style=for-the-badge" alt="使用示例"></a>
+  <a href="#安装"><img src="https://img.shields.io/badge/📦-安装指南-DA291C?style=for-the-badge" alt="安装指南"></a>
+  <a href="#工作原理为什么可信"><img src="https://img.shields.io/badge/⚙️-工作原理-DA291C?style=for-the-badge" alt="工作原理"></a>
+  <a href="https://github.com/lzitong01-wq/mcd-best-deal/stargazers"><img src="https://img.shields.io/badge/⭐-Star_项目-2EA44F?style=for-the-badge" alt="Star 项目"></a>
+</p>
+
 > 想吃麦当劳的时候，说一句「想吃什么、几个人、什么预算」——它会用麦当劳官方数据，把「怎么买最划算」算给你：**套餐还是单买、每张券怎么用最划算、去哪家店、堂食还是外卖**，价格全部来自官方算价器，逐项可验证。它还会记住你的偏好（忌口、口味、常用位置），越用越顺手。
 
 - 数据来源：麦当劳中国官方 MCP（`mcd-mcp` 连接器，35 个官方工具）
@@ -136,6 +149,10 @@ http_headers = { Authorization = "Bearer <Token>" }
 
 ## 使用
 
+<p align="center">
+  <img src="images/chat-demo.png" alt="用起来是什么样：一句话，得到三个可验证的方案" width="100%">
+</p>
+
 装好后，直接说：
 
 > 「我想吃巨无霸，一个人，帮我看看怎么买最划算」（省钱）
@@ -169,20 +186,20 @@ node scripts/preferences.mjs set --avoid 香菜,洋葱 --prefer 麦辣 --mode sa
 
 ## 工作原理（为什么可信）
 
-```text
-需求（想吃什么/人数/预算/模式）+ 用户偏好（忌口/口味/默认模式）
-  → collect：门店（含距离、营业状态）+ 菜单 + 逐店可用券 + 券包 + 营养表（全部实时）
-  → plan：候选枚举（官方套餐 / 单品裸买 / 单点组合 / 券商品方案；轻食类默认剔除）
-  → 每个候选调官方 calculate-price 试算实付价（分单位，精确）
-  → 券综合评估：价格最优的候选 × 每张门店券逐一试算（含券应用到候选内同商品）
-  → 三路评分（价格 / 营养偏差 / 便利）× 模式权重 → Top 方案
-  → 用户确认 → 领券 → 下单 → 用户自行支付
-```
+<p align="center">
+  <img src="images/how-it-works.png" alt="它是怎么算的：一句话需求 → 官方数据实时采集 → 候选枚举 → 官方算价器逐个试算 → 加权排序" width="100%">
+</p>
 
 - **价格永远来自官方算价器**：不估算、不复用旧价（实测同一商品在不同时段/门店价格不同）。
 - **菜单价 ≠ 成交价**：实测发现菜单标价与算价器结果可能不一致（如「巨无霸四件套」菜单 ¥32、算价器 ¥58.5）——因此连菜单价都不直接采用，一切展示价格以官方算价器为准。
 - **规则透明**：每个方案的得分由哪几项构成、权重多少，都能在 `config/rules.json` 看到、改到。
 - **数据诚实**：营养数据不完整会标注「不计分」；查不到的门店/券会说明，而不是编一个。
+
+## 实测效果（真实数据）
+
+<p align="center">
+  <img src="images/save-proof.png" alt="实测效果：巨无霸套餐比单点省 ¥12；有券不一定最省" width="100%">
+</p>
 
 ## 已知边界（实测结论）
 
@@ -205,6 +222,8 @@ mcd-best-deal/
 ├── MCP_INTEGRATION.md            # MCP 接入说明（Server / Tool / 流程 / 业务价值）
 ├── mcp-config.example.json       # MCP 配置示例（脱敏，仅环境变量占位符）
 ├── workbuddy.md                  # WorkBuddy 开发对话上下文（专项奖励核验用）
+├── LICENSE                       # MIT 开源许可证
+├── images/                       # README 配图（banner / 用法 / 原理 / 实测）
 └── skill/mcd-best-deal/          # 技能本体（源代码，复制即安装）
     ├── SKILL.md                  # 行为规范（触发描述 / 红线 / 主流程 / 展示规范）
     ├── install.sh · install.ps1  # 一键安装脚本
@@ -212,6 +231,10 @@ mcd-best-deal/
     ├── references/               # 详细文档（排障手册 / 多平台 / 数据管道）
     └── scripts/                  # 全部运行代码（零依赖）
 ```
+
+## 开源协议
+
+本项目基于 [MIT License](LICENSE) 开源。
 
 ## 免责声明
 
