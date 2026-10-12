@@ -12,7 +12,7 @@ import { readFile, writeFile } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
 import { McpClient, resolveToken } from './lib/mcp-client.mjs';
-import { findNutrition } from './lib/util.mjs';
+import { findNutrition, isLightItem, loadPreferences } from './lib/util.mjs';
 
 const SCHEMA = 'mcd-best-deal/plan@0.1.0';
 const COMBO_PATTERN = /套餐|三件套|四件套|随心选|双人餐|双人|单人餐|拼盘|随心拼|分享餐/;
@@ -23,7 +23,7 @@ function fail(message) {
 
 function parseArgs(argv) {
   if (argv.includes('--help')) return { help: true };
-  const options = { mode: 'save', people: 1, top: 3, want: null, budget: null, output: null, rules: null, style: 'any' };
+  const options = { mode: null, people: 1, top: 3, want: null, budget: null, output: null, rules: null, style: 'any' };
   const allowed = new Set(['--input', '--mode', '--people', '--want', '--budget', '--top', '--rules', '--output', '--style']);
   for (let index = 0; index < argv.length; index += 1) {
     const key = argv[index];
@@ -33,7 +33,7 @@ function parseArgs(argv) {
     options[key.slice(2).replace(/-([a-z])/g, (_, letter) => letter.toUpperCase())] = value;
   }
   if (!options.input) fail('需要 --input <collect 输出文件>');
-  if (!['save', 'healthy', 'easy'].includes(options.mode)) fail('--mode 只能是 save / healthy / easy');
+  if (options.mode !== null && !['save', 'healthy', 'easy'].includes(options.mode)) fail('--mode 只能是 save / healthy / easy');
   if (!['any', 'combo', 'single'].includes(String(options.style))) fail('--style 只能是 any / combo / single');
   options.people = Number(options.people);
   if (!Number.isInteger(options.people) || options.people < 1 || options.people > 20) fail('--people 必须是 1-20 的整数');
@@ -113,27 +113,31 @@ function nutritionOf(items, nutritionTable, targets) {
 // ---- 候选生成 ----
 
 function collectPool(data, options) {
-  // 返回 [{ storeCode, meals: [{code,name,price,originalPrice,tags,category,isCombo}] }]
+  // 返回 [{ storeCode, meals: [{code,name,price,originalPrice,tags,category,isPopular,isCombo}] }]
   const pools = [];
   for (const storeCode of data.candidates ?? []) {
     const menu = data.menus?.[storeCode];
     if (!menu) continue;
-    const categoryOf = new Map();
+    // 收集每个商品的全部所在分类（商品可能出现在多个分类；取第一个为主分类，人气按任意分类判定）
+    const categoriesOf = new Map();
     for (const category of menu.categories ?? []) {
       for (const entry of category.meals ?? []) {
-        categoryOf.set(String(entry.code), category.name ?? '');
+        const code = String(entry.code);
+        if (!categoriesOf.has(code)) categoriesOf.set(code, []);
+        categoriesOf.get(code).push(category.name ?? '');
       }
     }
     const meals = Object.entries(menu.meals ?? {}).map(([code, meal]) => {
-      const category = categoryOf.get(code) ?? '';
+      const names = categoriesOf.get(code) ?? [];
       return {
         code,
         name: meal.name ?? '',
         price: Number(meal.currentPrice),
         originalPrice: Number(meal.originalPrice),
         tags: meal.tags ?? [],
-        category,
-        isCombo: COMBO_PATTERN.test(meal.name ?? '') || /套餐|单人餐|多人餐|拼盘/.test(category),
+        category: names[0] ?? '',
+        isPopular: names.some((name) => name.includes('人气')),
+        isCombo: COMBO_PATTERN.test(meal.name ?? '') || /套餐|单人餐|多人餐|拼盘/.test(names.join(' ')),
       };
     }).filter((meal) => meal.code && Number.isFinite(meal.price));
     pools.push({ storeCode, meals });
@@ -147,6 +151,7 @@ function buildCandidates(data, rules, options) {
   const maxPerType = rules.constraints?.maxCandidatesPerType ?? 4;
   const people = options.people;
   const budgetFen = options.budget ? Math.round(options.budget * 100) : null;
+  const prefs = options.preferences ?? { avoidItems: [], preferItems: [] };
 
   const want = options.want?.trim() || null;
   // 常用词的别名扩展（如「咖啡」应能匹配 美式/奶铁 等商品与券）
@@ -158,19 +163,33 @@ function buildCandidates(data, rules, options) {
     '鸡': ['鸡'],
   };
   const wantTerms = want ? (WANT_ALIASES[want] ?? [want]) : null;
-  const matches = (meal) => !want || wantTerms.some((term) => meal.name.includes(term)
-    || meal.tags.some((tag) => tag.includes(term)));
+  // explicitlyWants：用户「明确点名」（无 want 时为 false，绝不因缺省而放行）
+  const explicitlyWants = (name, tags) => Boolean(want) && wantTerms.some((term) => String(name).includes(term)
+    || (tags ?? []).some((tag) => String(tag).includes(term)));
+  const matchesWant = (name, tags) => !want || explicitlyWants(name, tags);
+  const isAvoided = (meal) => prefs.avoidItems.some((item) => meal.name.includes(item));
+  const isPreferred = (meal) => prefs.preferItems.some((item) => meal.name.includes(item));
 
   for (const pool of pools) {
-    const poolMeals = pool.meals.filter(matches);
-    const popular = pool.meals.filter((meal) => meal.category.includes('人气'));
+    // 正餐池：① 轻食类（饮品/冰淇淋/甜点）默认排除——用户点名时保留；
+    //         ② 排除用户忌口商品。
+    const diningPool = pool.meals.filter((meal) => {
+      if (isAvoided(meal)) return false;
+      // 轻食类（饮品/冰淇淋/甜点）默认排除——仅当用户明确点名、或商品本身是套餐（如早餐套餐）时保留
+      if (!meal.isCombo && isLightItem(meal) && !explicitlyWants(meal.name, meal.tags)) return false;
+      return true;
+    });
+    // 排序偏好：用户喜欢的 > 人气款（仅作「不确定时的备用参考」，不再作为过滤条件）> 其余（保持原序）
+    const prefScore = (meal) => (isPreferred(meal) ? 2 : 0) + (meal.isPopular ? 1 : 0);
+    const ranked = [...diningPool].sort((a, b) => prefScore(b) - prefScore(a));
+    const wanted = want ? ranked.filter((meal) => matchesWant(meal.name, meal.tags)) : ranked;
     const styleAllowsCombo = options.style !== 'single';
     const styleAllowsSingle = options.style !== 'combo';
     const combos = styleAllowsCombo
-      ? (want ? poolMeals : popular).filter((meal) => meal.isCombo).slice(0, maxPerType)
+      ? wanted.filter((meal) => meal.isCombo).slice(0, maxPerType)
       : [];
     const singles = styleAllowsSingle
-      ? (want ? poolMeals : popular).filter((meal) => !meal.isCombo).slice(0, Math.max(2, Math.floor(maxPerType / 2)))
+      ? wanted.filter((meal) => !meal.isCombo).slice(0, Math.max(2, Math.floor(maxPerType / 2)))
       : [];
 
     // 类型 1：官方套餐
@@ -180,6 +199,7 @@ function buildCandidates(data, rules, options) {
         kind: 'combo', storeCode: pool.storeCode, group: want ?? combo.name.replace(COMBO_PATTERN, ''),
         title: `${combo.name} ×${quantity}`,
         items: [{ productCode: combo.code, productName: combo.name, quantity }],
+        ...(combo.isPopular ? { popular: true } : {}),
       });
     }
 
@@ -189,12 +209,13 @@ function buildCandidates(data, rules, options) {
         kind: 'single', storeCode: pool.storeCode, group: want ?? single.name,
         title: `${single.name} ×${people}`,
         items: [{ productCode: single.code, productName: single.name, quantity: people }],
+        ...(single.isPopular ? { popular: true } : {}),
       });
     }
 
-    // 类型 3：单品 + 基础搭配（薯条 + 可乐）
-    const fries = pool.meals.find((meal) => /薯条/.test(meal.name) && !meal.isCombo);
-    const drink = pool.meals.find((meal) => /可乐/.test(meal.name) && !meal.isCombo);
+    // 类型 3：单品 + 基础搭配（薯条 + 可乐；配套商品同样遵循忌口）
+    const fries = pool.meals.find((meal) => /薯条/.test(meal.name) && !meal.isCombo && !isAvoided(meal));
+    const drink = pool.meals.find((meal) => /可乐/.test(meal.name) && !meal.isCombo && !isAvoided(meal));
     for (const single of singles.slice(0, 2)) {
       if (!fries && !drink) break;
       const items = [{ productCode: single.code, productName: single.name, quantity: people }];
@@ -204,6 +225,7 @@ function buildCandidates(data, rules, options) {
         kind: 'combo-parts', storeCode: pool.storeCode, group: want ?? single.name,
         title: `${single.name} + ${fries?.name ?? ''}${drink ? ` + ${drink.name}` : ''} ×${people}`,
         items,
+        ...(single.isPopular ? { popular: true } : {}),
       });
     }
 
@@ -213,7 +235,14 @@ function buildCandidates(data, rules, options) {
     for (const coupon of coupons.slice(0, maxPerType)) {
       const product = coupon.products?.[0];
       if (!product?.productCode) continue;
-      const couponMatches = !want || wantTerms.some((term) => `${coupon.title} ${product.productName ?? ''}`.includes(term));
+      // 券商品进入主候选的条件：
+      //  · 用户点名（want 命中）→ 进入；
+      //  · 用户未点名：轻食类券（饮品/冰淇淋等）不进主候选（降级为「顺便可用」提示）；
+      //    其余商品券（小食等）进入主候选。
+      const couponIsLight = isLightItem({ name: product.productName ?? '' });
+      const couponMatches = want
+        ? matchesWant(`${coupon.title} ${product.productName ?? ''}`, [])
+        : !couponIsLight;
       const couponItem = {
         productCode: String(product.productCode),
         productName: product.productName ?? '券商品',
@@ -302,7 +331,7 @@ async function main() {
   if (options.help) {
     process.stdout.write([
       '用法：node scripts/plan.mjs --input <collect输出> [选项]',
-      '  --mode save|healthy|easy   目标模式（默认 save）',
+      '  --mode save|healthy|easy   目标模式（默认：偏好文件中的 defaultMode，否则 save）',
       '  --people 1                 用餐人数（默认 1）',
       '  --want 巨无霸              想吃的（名称/标签关键词，可选）',
       '  --style any|combo|single   购买方式偏好：any 都给（默认）/ combo 只看套餐 / single 只看单点',
@@ -329,6 +358,15 @@ async function main() {
   const scene = data.query?.scene ?? 'dine-in';
   const storeByCode = {};
   for (const store of data.stores ?? []) storeByCode[store.storeCode] = store;
+
+  // 0. 用户偏好（~/.mcd-best-deal/preferences.json；缺失/损坏时安全降级为空偏好）
+  const preferences = await loadPreferences();
+  if (options.mode === null) {
+    options.mode = preferences.defaultMode ?? 'save';
+    if (preferences.defaultMode) notes.push(`按用户偏好使用默认模式：${preferences.defaultMode}`);
+  }
+  if (preferences.avoidItems.length) notes.push(`已按偏好排除：${preferences.avoidItems.join('、')}`);
+  options.preferences = preferences;
 
   // 1. 生成候选
   const candidates = buildCandidates(data, rules, options);
@@ -387,6 +425,65 @@ async function main() {
   }
   if (!quoted.length) {
     fail(`全部候选试算失败。首要原因：${failed[0]?.reason ?? '未知'}`);
+  }
+
+  // 2.5 券综合评估：对基础候选（按价格从低到高取前 K 个）逐一叠加「每张可用券」试算，
+  //     综合比较所有商品可用券的实际效果（官方限制一单一券，每次仅叠加一张）
+  const maxVariants = rules.constraints?.maxCouponVariants ?? 12;
+  const couponEvalTopK = rules.constraints?.couponEvalTopK ?? 5;
+  const maxCouponsPerStore = rules.constraints?.maxCouponsPerStore ?? 4;
+  const baseRanked = [...quoted].sort((a, b) => a.pricing.price - b.pricing.price).slice(0, couponEvalTopK);
+  const variants = [];
+  const variantSignatures = new Set();
+  for (const base of baseRanked) {
+    if (variants.length >= maxVariants) break;
+    if (base.kind === 'coupon' || base.kind === 'split') continue; // 已是券方案，不再叠加
+    const storeCoupons = data.storeCoupons?.[base.storeCode] ?? [];
+    for (const coupon of storeCoupons.slice(0, maxCouponsPerStore)) {
+      if (variants.length >= maxVariants) break;
+      const product = coupon.products?.[0];
+      if (!product?.productCode) continue;
+      const signature = `${base.storeCode}|${base.items.map((item) => `${item.productCode}x${item.quantity}`).join(',')}|${coupon.couponId}`;
+      if (variantSignatures.has(signature)) continue;
+      variantSignatures.add(signature);
+      const items = base.items.map((item) => ({ ...item }));
+      const existing = items.find((item) => item.productCode === String(product.productCode));
+      if (existing) {
+        // 候选里正好含券商品：把券直接应用在该商品上
+        existing.couponId = coupon.couponId;
+        existing.couponCode = coupon.couponCode;
+      } else {
+        items.push({
+          productCode: String(product.productCode),
+          productName: product.productName ?? '券商品',
+          quantity: 1,
+          couponId: coupon.couponId,
+          couponCode: coupon.couponCode,
+        });
+      }
+      variants.push({
+        kind: base.kind, storeCode: base.storeCode, group: base.group,
+        title: `${base.title} + 券「${coupon.title}」`,
+        items,
+        coupon: { title: coupon.title, couponId: coupon.couponId },
+        matchesWant: true,
+      });
+    }
+  }
+  for (const variant of variants) {
+    if (quoteCalls >= maxQuoteCalls) {
+      notes.push(`已达试算上限（${quoteCalls} 次），部分「候选 + 券」组合未试算。`);
+      break;
+    }
+    const store = storeByCode[variant.storeCode];
+    if (!store) continue;
+    try {
+      const pricing = await quote(client, scene, store, variant, data);
+      quoteCalls += 1;
+      quoted.push({ ...variant, pricing });
+    } catch (error) {
+      failed.push({ title: variant.title, storeCode: variant.storeCode, reason: error.message });
+    }
   }
 
   // 3. 评分
@@ -459,6 +556,8 @@ async function main() {
         openNow: store?.openNow ?? null,
       },
       items: candidate.items,
+      ...(candidate.popular ? { popular: true } : {}),
+      ...(candidate.coupon ? { coupon: candidate.coupon } : {}),
       ...(candidate.subOrders ? { subOrders: candidate.subOrders } : {}),
       pricing: {
         originalPrice: candidate.pricing.originalPrice,

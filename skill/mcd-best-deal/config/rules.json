@@ -31,7 +31,10 @@
   "constraints": {
     "maxStores": 2,
     "maxCandidatesPerType": 4,
-    "maxQuoteCalls": 30,
+    "maxQuoteCalls": 40,
+    "maxCouponVariants": 12,
+    "couponEvalTopK": 5,
+    "maxCouponsPerStore": 4,
     "budgetHardFilter": true
   },
   "nutritionTargets": {

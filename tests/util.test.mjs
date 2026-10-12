@@ -1,8 +1,11 @@
 // mcd-best-deal · 单元测试（node:test，零依赖、无需网络）
-// 运行：node --test tests/   （或 bash test.sh 会一并执行）
+// 运行：node --test   （或 bash test.sh 会一并执行）
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { parseCompactTable, findNutrition, upsertTomlSection } from '../skill/mcd-best-deal/scripts/lib/util.mjs';
+import { writeFile, mkdtemp } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import path from 'node:path';
+import { parseCompactTable, findNutrition, upsertTomlSection, isLightItem, loadPreferences } from '../skill/mcd-best-deal/scripts/lib/util.mjs';
 
 // ---- parseCompactTable：解析 MCP 的「紧凑表格」字符串 ----
 
@@ -86,4 +89,68 @@ test('upsertTomlSection：替换已有段（不重复、不影响相邻段）', 
 test('upsertTomlSection：空文件可直接生成段', () => {
   const out = upsertTomlSection('', 'mcp_servers.demo', ['url = "https://x"']);
   assert.match(out, /\[mcp_servers\.demo\]/);
+});
+
+// ---- isLightItem：轻食类识别（饮品/咖啡/冰淇淋/甜点默认不计入正餐） ----
+
+test('isLightItem：饮品与咖啡类识别', () => {
+  assert.equal(isLightItem({ name: '可乐' }), true);
+  assert.equal(isLightItem({ name: '麦咖啡™冰美式中杯' }), true);
+  assert.equal(isLightItem({ name: '奶铁中杯' }), true);
+  assert.equal(isLightItem({ name: '经典麦旋风' }), true);
+  assert.equal(isLightItem({ name: '灰焰圆筒' }), true);
+  assert.equal(isLightItem({ name: '阳光柠檬红茶' }), true);
+  assert.equal(isLightItem({ name: '纯牛奶(盒装)' }), true);
+  assert.equal(isLightItem({ name: '浓浓黑巧（冰/热）' }), true);
+  assert.equal(isLightItem({ name: '麦咖啡™美式', category: '热饮' }), true);
+});
+
+test('isLightItem：正餐与小食不误伤', () => {
+  assert.equal(isLightItem({ name: '巨无霸' }), false);
+  assert.equal(isLightItem({ name: '麦辣鸡腿汉堡' }), false);
+  assert.equal(isLightItem({ name: '中薯条' }), false);
+  assert.equal(isLightItem({ name: '脆薯饼' }), false);
+  assert.equal(isLightItem({ name: '枫糖风味厚松饼猪柳蛋堡' }), false);
+  assert.equal(isLightItem({ name: '板烧鸡腿堡三件套' }), false);
+});
+
+test('isLightItem：空值安全', () => {
+  assert.equal(isLightItem(null), false);
+  assert.equal(isLightItem({}), false);
+});
+
+// ---- loadPreferences：用户偏好读取（缺失安全 + 字段规范化） ----
+
+test('loadPreferences：文件不存在返回安全默认值', async () => {
+  const prefs = await loadPreferences('C:/definitely-not-exists/preferences.json');
+  assert.deepEqual(prefs.avoidItems, []);
+  assert.deepEqual(prefs.preferItems, []);
+  assert.equal(prefs.defaultMode, null);
+  assert.equal(prefs.homeCity, null);
+});
+
+test('loadPreferences：解析并规范化字段（过滤空值/非法模式）', async () => {
+  const dir = await mkdtemp(path.join(tmpdir(), 'mcd-test-'));
+  const file = path.join(dir, 'preferences.json');
+  await writeFile(file, JSON.stringify({
+    avoidItems: ['香菜', '', 123],
+    preferItems: ['麦辣'],
+    defaultMode: 'healthy',
+    homeCity: '北京',
+    homeArea: ' 国贸 ',
+  }));
+  const prefs = await loadPreferences(file);
+  assert.deepEqual(prefs.avoidItems, ['香菜']);
+  assert.deepEqual(prefs.preferItems, ['麦辣']);
+  assert.equal(prefs.defaultMode, 'healthy');
+  assert.equal(prefs.homeCity, '北京');
+  assert.equal(prefs.homeArea, '国贸');
+});
+
+test('loadPreferences：非法 defaultMode 归零', async () => {
+  const dir = await mkdtemp(path.join(tmpdir(), 'mcd-test-'));
+  const file = path.join(dir, 'preferences.json');
+  await writeFile(file, JSON.stringify({ defaultMode: 'hacker' }));
+  const prefs = await loadPreferences(file);
+  assert.equal(prefs.defaultMode, null);
 });

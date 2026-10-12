@@ -1,5 +1,9 @@
-// mcd-best-deal · 纯工具函数（解析 / 匹配 / 文本处理）
-// 无副作用、无网络依赖，便于单元测试（tests/util.test.mjs）。
+// mcd-best-deal · 纯工具函数（解析 / 匹配 / 文本处理 / 用户偏好读取）
+// 除 loadPreferences 读取本地偏好文件外，其余函数无副作用、无网络依赖，便于单元测试（tests/util.test.mjs）。
+
+import { readFile } from 'node:fs/promises';
+import path from 'node:path';
+import { homedir } from 'node:os';
 
 // 解析 MCP 部分工具返回的「紧凑表格」字符串，格式：
 //   [行数]{列1,列2,...}:
@@ -57,4 +61,39 @@ export function upsertTomlSection(raw, sectionName, bodyLines) {
   }
   const merged = [...lines.slice(0, start), header, ...bodyLines, '', ...lines.slice(end)];
   return merged.join('\n');
+}
+
+// 轻食类识别（饮品 / 咖啡 / 冰淇淋 / 甜点）：
+// 默认不计入「正餐」推荐（用户在追求吃饱时通常不考虑这类商品）；
+// 用户明确点名（want 命中）时保留。注意不要误伤名称含相似字的正餐（如「厚松饼猪柳蛋堡」）。
+const LIGHT_PATTERN = /(麦咖啡|饮品|冷饮|热饮|咖啡|美式|奶铁|拿铁|卡布奇诺|浓缩|雪冰|冰淇淋|麦旋风|新地|圆筒|奶昔|圣代|甜筒|黑巧|可乐|雪碧|芬达|果汁|柠檬|红茶|奶茶|牛奶|燕麦奶|纯悦|矿泉水|香芋派|菠萝派|红豆派|派$)/;
+
+export function isLightItem(meal) {
+  if (!meal) return false;
+  const text = `${meal.name ?? ''} ${meal.category ?? ''} ${(meal.tags ?? []).join(' ')}`;
+  return LIGHT_PATTERN.test(text);
+}
+
+// 用户偏好文件路径（跨平台）与读取（缺失/损坏时返回安全默认值）
+export function preferencesPath() {
+  const home = process.env.USERPROFILE || process.env.HOME || homedir();
+  return path.join(home, '.mcd-best-deal', 'preferences.json');
+}
+
+export async function loadPreferences(file = preferencesPath()) {
+  const fallback = { avoidItems: [], preferItems: [], defaultMode: null, homeCity: null, homeArea: null, note: null };
+  let parsed;
+  try {
+    parsed = JSON.parse(await readFile(file, 'utf8'));
+  } catch {
+    return fallback;
+  }
+  return {
+    avoidItems: Array.isArray(parsed?.avoidItems) ? parsed.avoidItems.filter((item) => typeof item === 'string' && item.trim()) : [],
+    preferItems: Array.isArray(parsed?.preferItems) ? parsed.preferItems.filter((item) => typeof item === 'string' && item.trim()) : [],
+    defaultMode: ['save', 'healthy', 'easy'].includes(parsed?.defaultMode) ? parsed.defaultMode : null,
+    homeCity: typeof parsed?.homeCity === 'string' && parsed.homeCity.trim() ? parsed.homeCity.trim() : null,
+    homeArea: typeof parsed?.homeArea === 'string' && parsed.homeArea.trim() ? parsed.homeArea.trim() : null,
+    note: typeof parsed?.note === 'string' && parsed.note.trim() ? parsed.note.trim() : null,
+  };
 }

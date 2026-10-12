@@ -10,7 +10,7 @@
 
 import { writeFile } from 'node:fs/promises';
 import { McpClient, resolveToken } from './lib/mcp-client.mjs';
-import { parseCompactTable } from './lib/util.mjs';
+import { parseCompactTable, loadPreferences } from './lib/util.mjs';
 
 const SCHEMA = 'mcd-best-deal/collect@0.1.0';
 
@@ -30,12 +30,10 @@ function parseArgs(argv) {
     options[key.slice(2).replace(/-([a-z])/g, (_, letter) => letter.toUpperCase())] = value;
   }
   if (options.scene !== 'dine-in' && options.scene !== 'delivery') fail('--scene 只能是 dine-in 或 delivery');
-  if (options.scene === 'dine-in') {
-    if (!options.city?.trim()) fail('到店场景需要 --city');
-    if (!options.keyword?.trim()) fail('到店场景需要 --keyword（按位置找店，如「国贸」「三里屯」）');
-  } else if (!options.addressId?.trim()) {
+  if (options.scene === 'delivery' && !options.addressId?.trim()) {
     fail('外卖场景需要 --address-id（可先用 delivery-query-addresses 查询已有地址）');
   }
+  // 到店场景的 --city/--keyword 允许缺省：main 中会尝试用偏好文件（~/.mcd-best-deal/preferences.json）兜底后再校验
   options.maxStores = Number(options.maxStores);
   if (!Number.isInteger(options.maxStores) || options.maxStores < 1 || options.maxStores > 5) {
     fail('--max-stores 必须是 1-5 的整数');
@@ -129,6 +127,20 @@ async function main() {
     timeInfo: null,
     notes,
   };
+
+  // 0. 到店场景位置兜底：未传 --city/--keyword 时读取用户偏好
+  if (options.scene === 'dine-in' && (!options.city?.trim() || !options.keyword?.trim())) {
+    const prefs = await loadPreferences();
+    options.city = options.city?.trim() || prefs.homeCity;
+    options.keyword = options.keyword?.trim() || prefs.homeArea;
+    if (prefs.homeCity || prefs.homeArea) {
+      notes.push(`位置使用用户偏好：${[options.city, options.keyword].filter(Boolean).join(' ')}`);
+    }
+  }
+  if (options.scene === 'dine-in') {
+    if (!options.city) fail('到店场景需要 --city（或先用 preferences.mjs set --city <城市> 设置常用城市）');
+    if (!options.keyword) fail('到店场景需要 --keyword（或先用 preferences.mjs set --area <商圈> 设置常用商圈）');
+  }
 
   // 1. 门店
   if (options.scene === 'dine-in') {
