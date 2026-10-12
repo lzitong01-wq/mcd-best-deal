@@ -1,0 +1,13 @@
+{
+  "mcpServers": {
+    "mcd-mcp": {
+      "type": "streamablehttp",
+      "url": "https://mcp.mcd.cn",
+      "headers": {
+        "Authorization": "Bearer ${MCD_MCP_TOKEN}"
+      },
+      "timeout": 30000,
+      "disabled": false
+    }
+  }
+}

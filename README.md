@@ -203,6 +203,7 @@ mcd-best-deal/
 ├── README.md                     # 项目介绍 / 多平台安装 / 使用示例 / 目标用户
 ├── CONTEST_DECLARATION.md        # 参赛声明（官方原文）
 ├── MCP_INTEGRATION.md            # MCP 接入说明（Server / Tool / 流程 / 业务价值）
+├── mcp-config.example.json       # MCP 配置示例（脱敏，仅环境变量占位符）
 ├── workbuddy.md                  # WorkBuddy 开发对话上下文（专项奖励核验用）
 └── skill/mcd-best-deal/          # 技能本体（源代码，复制即安装）
     ├── SKILL.md                  # 行为规范（触发描述 / 红线 / 主流程 / 展示规范）
