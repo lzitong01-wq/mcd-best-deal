@@ -5,7 +5,7 @@ import assert from 'node:assert/strict';
 import { writeFile, mkdtemp } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
-import { parseCompactTable, findNutrition, upsertTomlSection, isLightItem, loadPreferences } from '../skill/mcd-best-deal/scripts/lib/util.mjs';
+import { parseCompactTable, findNutrition, upsertTomlSection, isLightItem, loadPreferences, expandWantTerms, matchesTerms } from '../skill/mcd-best-deal/scripts/lib/util.mjs';
 
 // ---- parseCompactTable：解析 MCP 的「紧凑表格」字符串 ----
 
@@ -153,4 +153,37 @@ test('loadPreferences：非法 defaultMode 归零', async () => {
   await writeFile(file, JSON.stringify({ defaultMode: 'hacker' }));
   const prefs = await loadPreferences(file);
   assert.equal(prefs.defaultMode, null);
+});
+
+// ---- expandWantTerms / matchesTerms：搜索词扩展与匹配（回归：「汉堡」漏商品） ----
+
+test('expandWantTerms：汉堡包含常见商品名关键词与「堡」', () => {
+  const terms = expandWantTerms('汉堡');
+  assert.ok(terms.includes('堡'));
+  assert.ok(terms.includes('巨无霸'));
+  assert.ok(terms.includes('麦香鸡'));
+});
+
+test('expandWantTerms：无别名词返回原词 / 空输入返回 null', () => {
+  assert.deepEqual(expandWantTerms('板烧'), ['板烧']);
+  assert.equal(expandWantTerms(null), null);
+  assert.equal(expandWantTerms(''), null);
+});
+
+test('matchesTerms：分类名参与匹配——名字不含「堡」的汉堡商品不漏（回归用例）', () => {
+  const terms = expandWantTerms('汉堡');
+  // 麦香鸡：名字不含「堡」，但其分类「炸鸡/大堡口福」含「堡」
+  assert.equal(matchesTerms('麦香鸡', [], '炸鸡/大堡口福', terms), true);
+  // 巨无霸：分类「巨无霸 牛鱼肉堡」含「堡」
+  assert.equal(matchesTerms('巨无霸', [], '巨无霸\n牛鱼肉堡', terms), true);
+  // 名字或标签直接命中
+  assert.equal(matchesTerms('板烧鸡腿堡', [], '', terms), true);
+  // 非汉堡商品不误伤
+  assert.equal(matchesTerms('中薯条', [], '小食', terms), false);
+  assert.equal(matchesTerms('可乐', ['冷饮'], '饮品', terms), false);
+});
+
+test('matchesTerms：空词表返回 false', () => {
+  assert.equal(matchesTerms('巨无霸', [], '', null), false);
+  assert.equal(matchesTerms('巨无霸', [], '', []), false);
 });

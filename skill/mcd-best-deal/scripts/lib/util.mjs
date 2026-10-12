@@ -74,6 +74,29 @@ export function isLightItem(meal) {
   return LIGHT_PATTERN.test(text);
 }
 
+// 常用搜索词的别名扩展。「汉堡」不能只展开为「堡」——麦香鸡、巨无霸等名字不含「堡」，
+// 需同时结合分类名匹配（见 matchesTerms 的 category 参数）与常见商品名关键词。
+export const WANT_ALIASES = {
+  '汉堡': ['堡', '巨无霸', '麦香鸡', '麦香鱼'],
+  '咖啡': ['咖啡', '美式', '奶铁', '拿铁', '卡布奇诺', '浓缩', '麦咖啡'],
+  '冰淇淋': ['冰淇淋', '新地', '麦旋风', '圆筒'],
+  '早餐': ['早餐', '松饼', '麦满分', '猪柳', '烟肉'],
+  '鸡': ['鸡'],
+};
+
+export function expandWantTerms(want) {
+  return want ? (WANT_ALIASES[want] ?? [want]) : null;
+}
+
+// 商品是否命中「想吃的」词组：名称 / 标签 / 分类任一包含即算。
+// 分类参与匹配可覆盖「巨无霸牛鱼肉堡」「炸鸡大堡口福」等类目下的商品（如名字不含「堡」的麦香鸡）。
+export function matchesTerms(name, tags, category, terms) {
+  if (!terms || !terms.length) return false;
+  return terms.some((term) => String(name).includes(term)
+    || (tags ?? []).some((tag) => String(tag).includes(term))
+    || String(category ?? '').includes(term));
+}
+
 // 用户偏好文件路径（跨平台）与读取（缺失/损坏时返回安全默认值）
 export function preferencesPath() {
   const home = process.env.USERPROFILE || process.env.HOME || homedir();
