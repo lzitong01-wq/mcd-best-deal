@@ -66,12 +66,14 @@ export function upsertTomlSection(raw, sectionName, bodyLines) {
 // 轻食类识别（饮品 / 咖啡 / 冰淇淋 / 甜点）：
 // 默认不计入「正餐」推荐（用户在追求吃饱时通常不考虑这类商品）；
 // 用户明确点名（want 命中）时保留。注意不要误伤名称含相似字的正餐（如「厚松饼猪柳蛋堡」）。
-const LIGHT_PATTERN = /(麦咖啡|饮品|冷饮|热饮|咖啡|美式|奶铁|拿铁|卡布奇诺|浓缩|雪冰|冰淇淋|麦旋风|新地|圆筒|奶昔|圣代|甜筒|黑巧|可乐|雪碧|芬达|果汁|柠檬|红茶|奶茶|牛奶|燕麦奶|纯悦|矿泉水|香芋派|菠萝派|红豆派|派$)/;
+const LIGHT_PATTERN = /(麦咖啡|饮品|冷饮|热饮|咖啡|美式|奶铁|拿铁|卡布奇诺|浓缩|雪冰|冰淇淋|麦旋风|新地|圆筒|奶昔|圣代|甜筒|黑巧|可乐|雪碧|芬达|果汁|柠檬|红茶|奶茶|牛奶|燕麦奶|纯悦|矿泉水|香芋派|菠萝派|红豆派|派$|酱$|饼干|曲奇|棒球帽|徽章|玩具|公仔|冰箱贴|帆布|周边)/;
 
 export function isLightItem(meal) {
   if (!meal) return false;
-  const text = `${meal.name ?? ''} ${meal.category ?? ''} ${(meal.tags ?? []).join(' ')}`;
-  return LIGHT_PATTERN.test(text);
+  // 逐字段独立匹配：「派$ / 酱$」等锚定式规则的语义是「某个字段以此结尾」，
+  // 若拼成一整串再匹配，锚点会被分隔空格破坏（曾导致「香芋派 / 牧场酱」识别失效）。
+  const parts = [String(meal.name ?? ''), String(meal.category ?? ''), ...(meal.tags ?? []).map(String)];
+  return parts.some((part) => LIGHT_PATTERN.test(part));
 }
 
 // 常用搜索词的别名扩展。「汉堡」不能只展开为「堡」——麦香鸡、巨无霸等名字不含「堡」，
@@ -82,19 +84,47 @@ export const WANT_ALIASES = {
   '冰淇淋': ['冰淇淋', '新地', '麦旋风', '圆筒'],
   '早餐': ['早餐', '松饼', '麦满分', '猪柳', '烟肉'],
   '鸡': ['鸡'],
+  '双吉': ['双吉', '双层吉士'],
+  '麦辣': ['麦辣'],
 };
 
-export function expandWantTerms(want) {
-  return want ? (WANT_ALIASES[want] ?? [want]) : null;
+// 把用户输入拆成多个搜索词（支持「巨无霸和麦辣鸡腿堡」「A、B」等写法）
+export function splitWants(want) {
+  return String(want ?? '').split(/[和与及、,，]|跟/).map((piece) => piece.trim()).filter(Boolean);
 }
 
-// 商品是否命中「想吃的」词组：名称 / 标签 / 分类任一包含即算。
-// 分类参与匹配可覆盖「巨无霸牛鱼肉堡」「炸鸡大堡口福」等类目下的商品（如名字不含「堡」的麦香鸡）。
+// 单词条展开：别名表 → 原词 →「去后缀」变体（「麦辣鸡腿堡」→「麦辣鸡腿」，可命中「麦辣鸡腿汉堡」）
+function expandOne(piece) {
+  if (WANT_ALIASES[piece]) return WANT_ALIASES[piece];
+  const terms = new Set([piece]);
+  const stripped = piece.replace(/(汉堡|三件套|四件套|套餐|双人餐|单人餐)$/, '').replace(/堡$/, '');
+  if (stripped && stripped !== piece && stripped.length >= 2) terms.add(stripped);
+  return [...terms];
+}
+
+export function expandWantTerms(want) {
+  if (!want) return null;
+  const merged = new Set();
+  for (const piece of splitWants(want)) {
+    for (const term of expandOne(piece)) merged.add(term);
+  }
+  return [...merged];
+}
+
+// 匹配级别：2 = 名称/标签直接命中（精确级）；1 = 仅分类名命中（宽松级）；0 = 未命中。
+// 分类命中用于覆盖「巨无霸牛鱼肉堡」「炸鸡大堡口福」等类目下名字不含关键词的商品（如麦香鸡）；
+// 但具体商品词（如「巨无霸」）应以名称级为准，避免被同分类下更便宜的商品挤掉。
+export function matchLevel(name, tags, category, terms) {
+  if (!terms || !terms.length) return 0;
+  if (terms.some((term) => String(name).includes(term)
+    || (tags ?? []).some((tag) => String(tag).includes(term)))) return 2;
+  if (terms.some((term) => String(category ?? '').includes(term))) return 1;
+  return 0;
+}
+
+// 兼容入口：命中即算（名称级或分类级）
 export function matchesTerms(name, tags, category, terms) {
-  if (!terms || !terms.length) return false;
-  return terms.some((term) => String(name).includes(term)
-    || (tags ?? []).some((tag) => String(tag).includes(term))
-    || String(category ?? '').includes(term));
+  return matchLevel(name, tags, category, terms) > 0;
 }
 
 // 用户偏好文件路径（跨平台）与读取（缺失/损坏时返回安全默认值）

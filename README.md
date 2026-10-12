@@ -201,6 +201,8 @@ node scripts/preferences.mjs set --avoid 香菜,洋葱 --prefer 麦辣 --mode sa
   <img src="images/save-proof.png" alt="实测效果：巨无霸套餐比单点省 ¥12；有券不一定最省" width="100%">
 </p>
 
+> 本项目经过 50 题系统性测试（发现 5 个 P0/P1 缺陷并全部修复）——完整记录见 [TESTING.md](TESTING.md)。
+
 ## 已知边界（实测结论）
 
 | 边界 | 说明 |
@@ -222,6 +224,9 @@ mcd-best-deal/
 ├── MCP_INTEGRATION.md            # MCP 接入说明（Server / Tool / 流程 / 业务价值）
 ├── mcp-config.example.json       # MCP 配置示例（脱敏，仅环境变量占位符）
 ├── workbuddy.md                  # WorkBuddy 开发对话上下文（专项奖励核验用）
+├── TESTING.md                    # 测试与质量记录（50 题测试 → 缺陷修复 → 回归）
+├── test.sh                       # 自检脚本（结构 / 语法 / 单元测试）
+├── tests/                        # 单元测试（node:test，零依赖）
 ├── LICENSE                       # MIT 开源许可证
 ├── images/                       # README 配图（banner / 用法 / 原理 / 实测）
 └── skill/mcd-best-deal/          # 技能本体（源代码，复制即安装）

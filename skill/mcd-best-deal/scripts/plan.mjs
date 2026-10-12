@@ -5,14 +5,15 @@
 //
 // 用法：
 //   node scripts/plan.mjs --input data.json [--mode save|healthy|easy] [--people 1]
-//                         [--want 关键词] [--budget 总价上限(元)] [--top 3]
+//                         [--want 关键词（多词用 和/、/，）] [--budget 总价上限(元)] [--top 3]
+//                         [--protein-min 30 --kcal-max 600 --fat-max 30 --sodium-max 800]
 //                         [--rules ../config/rules.json] [--output plan.json]
 
 import { readFile, writeFile } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
 import { McpClient, resolveToken } from './lib/mcp-client.mjs';
-import { findNutrition, isLightItem, loadPreferences, expandWantTerms, matchesTerms } from './lib/util.mjs';
+import { findNutrition, isLightItem, loadPreferences, expandWantTerms, matchLevel, splitWants, WANT_ALIASES, matchesTerms } from './lib/util.mjs';
 
 const SCHEMA = 'mcd-best-deal/plan@0.1.0';
 const COMBO_PATTERN = /套餐|三件套|四件套|随心选|双人餐|双人|单人餐|拼盘|随心拼|分享餐/;
@@ -24,7 +25,8 @@ function fail(message) {
 function parseArgs(argv) {
   if (argv.includes('--help')) return { help: true };
   const options = { mode: null, people: 1, top: 3, want: null, budget: null, output: null, rules: null, style: 'any' };
-  const allowed = new Set(['--input', '--mode', '--people', '--want', '--budget', '--top', '--rules', '--output', '--style']);
+  const allowed = new Set(['--input', '--mode', '--people', '--want', '--budget', '--top', '--rules', '--output', '--style',
+    '--protein-min', '--kcal-max', '--fat-max', '--sodium-max']);
   for (let index = 0; index < argv.length; index += 1) {
     const key = argv[index];
     if (!allowed.has(key)) fail(`未知参数：${key}`);
@@ -34,6 +36,13 @@ function parseArgs(argv) {
   }
   if (!options.input) fail('需要 --input <collect 输出文件>');
   if (options.mode !== null && !['save', 'healthy', 'easy'].includes(options.mode)) fail('--mode 只能是 save / healthy / easy');
+  for (const key of ['proteinMin', 'kcalMax', 'fatMax', 'sodiumMax']) {
+    if (options[key] != null) {
+      const value = Number(options[key]);
+      if (!Number.isFinite(value) || value <= 0) fail(`--${key.replace(/[A-Z]/g, (letter) => `-${letter.toLowerCase()}`)} 必须是正数`);
+      options[key] = value;
+    }
+  }
   if (!['any', 'combo', 'single'].includes(String(options.style))) fail('--style 只能是 any / combo / single');
   options.people = Number(options.people);
   if (!Number.isInteger(options.people) || options.people < 1 || options.people > 20) fail('--people 必须是 1-20 的整数');
@@ -96,6 +105,9 @@ function nutritionOf(items, nutritionTable, targets) {
       penalties.push((totals.sodium - targets.sodiumMgMax) / targets.sodiumMgMax);
     }
     score = Math.max(0, 1 - penalties.reduce((sum, value) => sum + value, 0));
+  } else {
+    // 营养数据不完整：降权（不给中性分）——避免「0 kcal 的酱料」在健康模式里赢过有真实数据的商品
+    score = 0.3;
   }
   return {
     energyKcal: Math.round(totals.energyKcal),
@@ -155,8 +167,10 @@ function buildCandidates(data, rules, options) {
   const prefs = options.preferences ?? { avoidItems: [], preferItems: [] };
 
   const want = options.want?.trim() || null;
-  // 词条扩展与匹配在 lib/util.mjs（「汉堡」→「堡」+ 常见名 + 分类名匹配，避免漏掉麦香鸡 / 巨无霸）
+  // 词条扩展与匹配在 lib/util.mjs（多词拆分 + 别名 + 「去后缀」变体，如 麦辣鸡腿堡→麦辣鸡腿）
   const wantTerms = expandWantTerms(want);
+  // 品类词（汉堡/咖啡/冰淇淋…）允许「分类名」宽松匹配参与；具体商品词（巨无霸/麦香鸡）以名称命中为准
+  const broadMatch = splitWants(want).some((piece) => piece in WANT_ALIASES);
   // explicitlyWants：用户「明确点名」（无 want 时为 false，绝不因缺省而放行）
   const explicitlyWants = (name, tags, category) => Boolean(want) && matchesTerms(name, tags, category, wantTerms);
   const matchesWant = (name, tags, category) => !want || explicitlyWants(name, tags, category);
@@ -175,7 +189,20 @@ function buildCandidates(data, rules, options) {
     // 排序偏好：用户喜欢的 > 人气款（仅作「不确定时的备用参考」，不再作为过滤条件）> 其余（保持原序）
     const prefScore = (meal) => (isPreferred(meal) ? 2 : 0) + (meal.isPopular ? 1 : 0);
     const ranked = [...diningPool].sort((a, b) => prefScore(b) - prefScore(a));
-    const wanted = want ? ranked.filter((meal) => matchesWant(meal.name, meal.tags, meal.category)) : ranked;
+    // 匹配优先级（修复「点名巨无霸，Top 却是同分类里更便宜的牛肉堡」）：
+    //  · 品类词（宽匹配）→ 名称级 + 分类级合并；
+    //  · 具体商品词 → 以名称/标签直接命中的候选为准；名称级为空时才退回分类级。
+    let wanted;
+    if (!want) {
+      wanted = ranked;
+    } else if (broadMatch) {
+      wanted = ranked.filter((meal) => matchLevel(meal.name, meal.tags, meal.category, wantTerms) > 0);
+    } else {
+      const nameLevel = ranked.filter((meal) => matchLevel(meal.name, meal.tags, meal.category, wantTerms) === 2);
+      wanted = nameLevel.length
+        ? nameLevel
+        : ranked.filter((meal) => matchLevel(meal.name, meal.tags, meal.category, wantTerms) === 1);
+    }
     // 完整匹配清单（供展示层说明覆盖范围：候选受名额限制，但「想吃的」的完整匹配可如实告知）
     if (want && wanted.length) {
       matchedCatalog.push({
@@ -202,7 +229,7 @@ function buildCandidates(data, rules, options) {
     for (const combo of combos) {
       const quantity = /双人/.test(combo.name) ? Math.ceil(people / 2) : people;
       candidates.push({
-        kind: 'combo', storeCode: pool.storeCode, group: want ?? combo.name.replace(COMBO_PATTERN, ''),
+        kind: 'combo', storeCode: pool.storeCode, group: combo.name.replace(COMBO_PATTERN, ''),
         title: `${combo.name} ×${quantity}`,
         items: [{ productCode: combo.code, productName: combo.name, quantity }],
         estimateFen: Math.round(combo.price * 100) * quantity, // 菜单现价（元）→ 分；仅供预算预筛，实付价一律以算价器为准
@@ -213,7 +240,7 @@ function buildCandidates(data, rules, options) {
     // 类型 2：单品裸买
     for (const single of singles.slice(0, 3)) {
       candidates.push({
-        kind: 'single', storeCode: pool.storeCode, group: want ?? single.name,
+        kind: 'single', storeCode: pool.storeCode, group: single.name,
         title: `${single.name} ×${people}`,
         items: [{ productCode: single.code, productName: single.name, quantity: people }],
         estimateFen: Math.round(single.price * 100) * people, // 菜单现价（元）→ 分
@@ -230,7 +257,7 @@ function buildCandidates(data, rules, options) {
       if (fries) items.push({ productCode: fries.code, productName: fries.name, quantity: people });
       if (drink) items.push({ productCode: drink.code, productName: drink.name, quantity: people });
       candidates.push({
-        kind: 'combo-parts', storeCode: pool.storeCode, group: want ?? single.name,
+        kind: 'combo-parts', storeCode: pool.storeCode, group: single.name,
         title: `${single.name} + ${fries?.name ?? ''}${drink ? ` + ${drink.name}` : ''} ×${people}`,
         items,
         estimateFen: Math.round((single.price + (fries?.price ?? 0) + (drink?.price ?? 0)) * 100) * people,
@@ -284,9 +311,10 @@ function buildCandidates(data, rules, options) {
     }
   }
 
-  // 预算预筛（按菜单现价估算；含券/无法估价的候选一律保留，交试算后按实际实付价硬筛）
+  // 预算预筛（按菜单现价估算，留 50% 余量避免误杀「券后可能达标」的候选；含券/无法估价的一律保留）
+  const preScreenCap = budgetFen ? Math.round(budgetFen * 1.5) : null;
   const kept = budgetFen
-    ? candidates.filter((candidate) => !candidate.estimateFen || candidate.estimateFen <= budgetFen)
+    ? candidates.filter((candidate) => !candidate.estimateFen || candidate.estimateFen <= preScreenCap)
     : candidates;
   // 去重：同店 + 同商品组合签名
   const seen = new Set();
@@ -340,10 +368,13 @@ async function main() {
       '用法：node scripts/plan.mjs --input <collect输出> [选项]',
       '  --mode save|healthy|easy   目标模式（默认：偏好文件中的 defaultMode，否则 save）',
       '  --people 1                 用餐人数（默认 1）',
-      '  --want 巨无霸              想吃的（名称/标签关键词，可选）',
+      '  --want 巨无霸              想吃的（名称/标签关键词；多词用「和/、/，」分隔，可选）',
       '  --style any|combo|single   购买方式偏好：any 都给（默认）/ combo 只看套餐 / single 只看单点',
       '  --budget 50                总价上限（元，可选）',
-      '  --top 3                    输出前 N 个方案（默认 3）',
+      '  --top 3                    输出前 N 个方案（默认 3，同一方案只展示最优门店）',
+      '  --protein-min 30           营养目标覆盖：蛋白质下限（g，可选）',
+      '  --kcal-max 600             营养目标覆盖：热量上限（kcal，可选）',
+      '  --fat-max 30 / --sodium-max 800   营养目标覆盖：脂肪（g）/ 钠（mg）上限（可选）',
       '  --rules <文件>             规则文件（默认 ../config/rules.json）',
       '  --output <文件>            输出到文件（默认 stdout）',
       '',
@@ -495,7 +526,20 @@ async function main() {
 
   // 3. 评分
   const weights = rules.modes?.[options.mode]?.weights ?? { price: 0.7, nutrition: 0.1, convenience: 0.2 };
-  const targets = rules.nutritionTargets ?? {};
+  const targets = { ...(rules.nutritionTargets ?? {}) };
+  // 命令行可覆盖营养目标（如「蛋白质 30g 以上、600 卡以内」→ --protein-min 30 --kcal-max 600）
+  const targetOverrides = [
+    ['proteinMin', 'proteinGMin', '蛋白质下限(g)'],
+    ['kcalMax', 'energyKcalMax', '热量上限(kcal)'],
+    ['fatMax', 'fatGMax', '脂肪上限(g)'],
+    ['sodiumMax', 'sodiumMgMax', '钠上限(mg)'],
+  ];
+  for (const [optionKey, targetKey, label] of targetOverrides) {
+    if (options[optionKey] != null) {
+      targets[targetKey] = options[optionKey];
+      notes.push(`营养目标已覆盖：${label} → ${options[optionKey]}`);
+    }
+  }
   const prices = quoted.map((candidate) => candidate.pricing.price);
   const minPrice = Math.min(...prices);
   const maxPrice = Math.max(...prices);
@@ -532,10 +576,16 @@ async function main() {
       store: storeByCode[candidate.storeCode]?.storeName ?? candidate.storeCode,
     }));
   const mainList = quoted.filter((candidate) => candidate.kind !== 'coupon' || candidate.matchesWant !== false);
-  const sorted = [...(mainList.length ? mainList : quoted)].sort((a, b) => b.scores.total - a.scores.total);
+  // 兜底顺序：主列表 → 非券候选 → 全部（避免把「降级为提示的券」当作主推荐捞回来）
+  const nonCoupon = quoted.filter((candidate) => candidate.kind !== 'coupon');
+  const fallbackPool = mainList.length ? mainList : (nonCoupon.length ? nonCoupon : quoted);
+  const sorted = [...fallbackPool].sort((a, b) => b.scores.total - a.scores.total);
   const filtered = budgetFen ? sorted.filter((candidate) => candidate.pricing.price <= budgetFen) : sorted;
   if (budgetFen && !filtered.length) {
-    notes.push(`预算 ¥${options.budget} 内没有方案；以下展示最接近的候选（未删减）。`);
+    const closest = [...sorted].sort((a, b) => a.pricing.price - b.pricing.price)[0];
+    const closestYuan = ((closest?.pricing.price ?? 0) / 100).toFixed(2);
+    const overYuan = (((closest?.pricing.price ?? 0) - budgetFen) / 100).toFixed(2);
+    notes.push(`预算 ¥${options.budget} 内没有符合项；最接近的是「${closest?.title ?? '—'}」实付 ¥${closestYuan}（超 ¥${overYuan}），以下按其展示。`);
   }
   const finalList = (filtered.length ? filtered : sorted).map((candidate, index) => {
     const store = storeByCode[candidate.storeCode];
@@ -549,8 +599,19 @@ async function main() {
     if (candidate.kind === 'combo-parts') reasons.push('单点组合（对照套餐价）');
     if (candidate.kind === 'coupon') reasons.push('用券方案');
     if (candidate.kind === 'split') reasons.push(`需分 ${candidate.splitOrders} 次下单（每单一券）`);
-    if (candidate.nutrition?.matched) reasons.push(`约 ${candidate.nutrition.energyKcal} kcal`);
-    else if (candidate.nutrition?.partial) reasons.push('营养数据不完整（不计分）');
+    if (candidate.nutrition?.matched) {
+      reasons.push(`约 ${candidate.nutrition.energyKcal} kcal`);
+      if (options.mode === 'healthy') {
+        const parts = [];
+        const nutrition = candidate.nutrition;
+        if (targets.energyKcalMax) parts.push(`热量 ${nutrition.energyKcal}/${targets.energyKcalMax} kcal${nutrition.energyKcal <= targets.energyKcalMax ? ' ✓' : '（超上限）'}`);
+        if (targets.proteinGMin) parts.push(`蛋白 ${nutrition.protein}/${targets.proteinGMin} g${nutrition.protein >= targets.proteinGMin ? ' ✓' : '（不足）'}`);
+        if (parts.length) reasons.push(`健康目标：${parts.join('、')}`);
+      }
+    } else {
+      reasons.push('营养数据不完整（不计分）');
+    }
+    if (scene === 'delivery') reasons.push('外卖实付含配送/打包费');
     return {
       rank: index + 1,
       title: candidate.title,
@@ -578,6 +639,17 @@ async function main() {
       reason: reasons.join('；'),
     };
   });
+
+  // 4.5 Top 展示去重：同一方案（同商品名、不含数量）只展示最优门店，避免「同款三店」占满 Top（其余保留在 all）
+  const topDeduped = [];
+  const seenTopKeys = new Set();
+  for (const entry of finalList) {
+    const key = entry.title.replace(/\s*×\d+\s*$/, '');
+    if (seenTopKeys.has(key)) continue;
+    seenTopKeys.add(key);
+    topDeduped.push(entry);
+    if (topDeduped.length >= options.top) break;
+  }
 
   // 5. 显式对比：同店同组下「套餐 vs 单点组合」，直接给出价差结论
   const comparisons = [];
@@ -631,7 +703,7 @@ async function main() {
       failed: failed.length,
       quoteCalls,
     },
-    top: finalList.slice(0, options.top),
+    top: topDeduped.map((entry, index) => ({ ...entry, rank: index + 1 })), // top 为展示视图，重编连续序号（all 中保留竞争排名）
     all: finalList,
     byStyle,
     comparisons,
