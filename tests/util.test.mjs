@@ -225,9 +225,11 @@ test('expandWantTerms：双吉别名与多词合并', () => {
 
 // ---- isLightItem：酱料 / 饼干 / 周边（回归：不该排「正餐」第一） ----
 
-test('isLightItem：调料 / 饼干 / 周边识别，可食用小食不误伤', () => {
+test('isLightItem：调料 / 饼干 / 配餐 / 周边识别，可食用小食不误伤', () => {
   assert.equal(isLightItem({ name: '北美招牌牧场酱' }), true);
   assert.equal(isLightItem({ name: '素龙限定饼干' }), true);
   assert.equal(isLightItem({ name: '联名复古棒球帽' }), true);
+  assert.equal(isLightItem({ name: '苹果片' }), true);
+  assert.equal(isLightItem({ name: '香甜玉米杯' }), true);
   assert.equal(isLightItem({ name: '蘸酱炸鸡' }), false);
 });

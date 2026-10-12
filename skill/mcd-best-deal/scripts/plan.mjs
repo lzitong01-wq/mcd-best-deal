@@ -182,8 +182,9 @@ function buildCandidates(data, rules, options) {
     //         ② 排除用户忌口商品。
     const diningPool = pool.meals.filter((meal) => {
       if (isAvoided(meal)) return false;
-      // 轻食类（饮品/冰淇淋/甜点）默认排除——仅当用户明确点名、或商品本身是套餐（如早餐套餐）时保留
-      if (!meal.isCombo && isLightItem(meal) && !explicitlyWants(meal.name, meal.tags, meal.category)) return false;
+      // 轻食/配餐类（饮品/冰淇淋/甜点/酱料/苹果片等）默认排除——仅当用户明确点名时保留。
+      // 注意：不豁免「套餐」——「XX 饮品随心选」这类含套餐字样的轻食套餐同样不该进正餐候选（外部实测发现）。
+      if (isLightItem(meal) && !explicitlyWants(meal.name, meal.tags, meal.category)) return false;
       return true;
     });
     // 排序偏好：用户喜欢的 > 人气款（仅作「不确定时的备用参考」，不再作为过滤条件）> 其余（保持原序）
@@ -473,6 +474,10 @@ async function main() {
 
   // 2.5 券综合评估：对基础候选（按价格从低到高取前 K 个）逐一叠加「每张可用券」试算，
   //     综合比较所有商品可用券的实际效果（官方限制一单一券，每次仅叠加一张）
+  // 「加成」变体判断券商品是否命中需求所需（与 buildCandidates 内的匹配口径一致）
+  const wantQuery = options.want?.trim() || null;
+  const wantTermList = expandWantTerms(wantQuery);
+
   const maxVariants = rules.constraints?.maxCouponVariants ?? 15;
   const couponEvalTopK = rules.constraints?.couponEvalTopK ?? 5;
   const maxCouponsPerStore = rules.constraints?.maxCouponsPerStore ?? 4;
@@ -519,12 +524,18 @@ async function main() {
           couponCode: coupon.couponCode,
         });
       }
+      // 「加成」变体 = 候选本身不含券商品、靠追加构成的组合（如「苹果片 + 咖啡券」）。
+      // 这类组合只在券商品命中「想吃的」时才参与主推荐；否则标记 addon（保留在 all / 分组里作参考，不进 Top）。
+      const isAddon = !existing;
       variants.push({
         kind: base.kind, storeCode: base.storeCode, group: base.group,
         title: `${base.title} + 券「${coupon.title}」`,
         items,
         coupon: { title: coupon.title, couponId: coupon.couponId },
         matchesWant: true,
+        ...(isAddon
+          ? { addon: true, addonRelevant: Boolean(wantQuery) && matchLevel(product.productName ?? '', [], '', wantTermList) > 0 }
+          : {}),
       });
     }
   }
@@ -658,6 +669,7 @@ async function main() {
       },
       items: candidate.items,
       ...(candidate.popular ? { popular: true } : {}),
+      ...(candidate.addon ? { addon: true, addonRelevant: candidate.addonRelevant ?? false } : {}),
       ...(candidate.coupon ? { coupon: candidate.coupon } : {}),
       ...(candidate.subOrders ? { subOrders: candidate.subOrders } : {}),
       pricing: {
@@ -677,6 +689,8 @@ async function main() {
   const topDeduped = [];
   const seenTopKeys = new Set();
   for (const entry of finalList) {
+    // 「加成」券组合（如 苹果片+咖啡券）默认不进 Top——除非券商品命中用户点名；它们保留在 all/byStyle 作参考
+    if (entry.addon && !entry.addonRelevant) continue;
     const key = entry.title.replace(/\s*×\d+\s*$/, '');
     if (seenTopKeys.has(key)) continue;
     seenTopKeys.add(key);

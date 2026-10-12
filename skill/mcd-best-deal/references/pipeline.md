@@ -76,6 +76,7 @@ node scripts/plan.mjs --input mcd-data.json --mode save|healthy|easy --people 1 
 | `failed[]` | 试算失败的候选及原因（通常因门店打烊/券不可用） |
 | `matchedCatalog[]` | `--want` 时的完整匹配清单（候选受名额限制，完整匹配如实给出） |
 | `popular` | 人气款标记（仅作「没主意时」的参考提示） |
+| `addon` / `addonRelevant` | 「加成」券组合标记（候选 + 追加券商品，如 主餐+咖啡券）——默认不进 Top，除非券商品命中需求 |
 | `pricing.price` | 实付价（**分**，展示时除以 100） |
 | `scores` | 三路得分与总分（`price/nutrition/convenience/total`） |
 | `nutrition.details` | 每个商品的营养匹配质量（`exact` / `fuzzy` / `none`） |
@@ -86,6 +87,7 @@ node scripts/plan.mjs --input mcd-data.json --mode save|healthy|easy --people 1 
 - 价格只来自官方试算结果，不估算、不复用旧价（**菜单标价仅用于候选预筛，且实测存在菜单价与算价器不一致的案例——菜单价绝不作为成交价**；差异 >30% 时自动写入 `notes` 价格差异提示）；
 - 营养仅精确匹配才计入评分，否则标注「不完整（不计分）」；健康模式下不完整数据降权；
 - 券的可用性逐店、逐时段实时查询，不缓存；券评估变体每次只挂一张券；
+- 轻食/配餐（饮品/甜点/酱料/苹果片等）不进正餐候选；「加成」券组合默认只作参考（不进 Top）；
 - 点名款保底进候选（名称级精确匹配优先——点名的菜不会被同类目更便宜的商品挤掉）；
 - 预算内无符合项时输出「最接近的是……超 ¥Y」，不静默替换；
 - 拆单方案显式标注「需分 N 次下单」。
